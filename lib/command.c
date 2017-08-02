@@ -1068,8 +1068,19 @@ int cmd_execute_command(vector vline, struct vty *vty,
 			vty->node = try_node;
 			ret = cmd_execute_command_real(vline, FILTER_RELAXED,
 						       vty, cmd);
-			if (ret == CMD_SUCCESS || ret == CMD_WARNING)
+			if (ret == CMD_SUCCESS || ret == CMD_WARNING) {
+				if (onode != VTY_NODE) {
+					char *line =
+						XSTRDUP(MTYPE_TMP, vty->buf);
+					line = strsep(&line, "\r\n");
+					zlog_warn(
+						"%s: changed CLI nodes from '%s' to '%s' to execute '%s'. Later configuration may fail due to improper context.",
+						__func__, node_names[onode],
+						node_names[try_node], line);
+					XFREE(MTYPE_TMP, line);
+				}
 				return ret;
+			}
 		}
 		/* no command succeeded, reset the vty to the original node */
 		vty->node = onode;
@@ -1150,6 +1161,14 @@ int command_config_read_one_line(struct vty *vty,
 		    && !(!use_daemon && ret == CMD_ERR_NOTHING_TODO)
 		    && ret != CMD_SUCCESS && ret != CMD_WARNING) {
 			vty->node = saved_node;
+		} else if (saved_node != VTY_NODE) {
+			char *line = XSTRDUP(MTYPE_TMP, vty->buf);
+			line = strsep(&line, "\r\n");
+			zlog_warn(
+				"%s: changed CLI nodes from '%s' to '%s' to execute '%s'. Later configuration may fail due to improper context.",
+				__func__, node_names[saved_node],
+				node_names[vty->node], line);
+			XFREE(MTYPE_TMP, line);
 		}
 	}
 
