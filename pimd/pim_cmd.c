@@ -6454,6 +6454,54 @@ DEFUN (interface_no_ip_pim_sm,
 	return CMD_SUCCESS;
 }
 
+/* boundaries */
+DEFUN(interface_ip_pim_boundary_oil,
+      interface_ip_pim_boundary_oil_cmd,
+      "ip pim boundary oil WORD",
+      IP_STR
+      PIM_STR
+      "Define multicast boundary\n"
+      "Filter OIL using prefix list\n"
+      "Prefix list to filter OIL with")
+{
+	VTY_DECLVAR_CONTEXT(interface, iif);
+	struct pim_interface *pim_ifp;
+	int idx = 0;
+
+	argv_find(argv, argc, "WORD", &idx);
+	pim_ifp = iif->info;
+	if (pim_ifp->boundary_oil_plist)
+		XFREE(MTYPE_PIM_INTERFACE, pim_ifp->boundary_oil_plist);
+
+	pim_ifp->boundary_oil_plist =
+		XSTRDUP(MTYPE_PIM_INTERFACE, argv[idx]->arg);
+
+	/* Interface will be pruned from OIL on next Join */
+	return CMD_SUCCESS;
+}
+
+DEFUN(interface_no_ip_pim_boundary_oil,
+      interface_no_ip_pim_boundary_oil_cmd,
+      "no ip pim boundary oil [WORD]",
+      NO_STR
+      IP_STR
+      PIM_STR
+      "Define multicast boundary\n"
+      "Filter OIL using prefix list\n"
+      "Prefix list to filter OIL with")
+{
+	VTY_DECLVAR_CONTEXT(interface, iif);
+	struct pim_interface *pim_ifp;
+	int idx;
+
+	argv_find(argv, argc, "WORD", &idx);
+	pim_ifp = iif->info;
+	if (pim_ifp->boundary_oil_plist)
+		XFREE(MTYPE_PIM_INTERFACE, pim_ifp->boundary_oil_plist);
+
+	return CMD_SUCCESS;
+}
+
 DEFUN (interface_ip_mroute,
        interface_ip_mroute_cmd,
        "ip mroute INTERFACE A.B.C.D",
@@ -8556,6 +8604,8 @@ void pim_cmd_init(void)
 	install_element(INTERFACE_NODE, &interface_no_ip_pim_drprio_cmd);
 	install_element(INTERFACE_NODE, &interface_ip_pim_hello_cmd);
 	install_element(INTERFACE_NODE, &interface_no_ip_pim_hello_cmd);
+	install_element(INTERFACE_NODE, &interface_ip_pim_boundary_oil_cmd);
+	install_element(INTERFACE_NODE, &interface_no_ip_pim_boundary_oil_cmd);
 
 	// Static mroutes NEB
 	install_element(INTERFACE_NODE, &interface_ip_mroute_cmd);

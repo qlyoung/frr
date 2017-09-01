@@ -153,6 +153,7 @@ int pim_joinprune_recv(struct interface *ifp, struct pim_neighbor *neigh,
 		       int tlv_buf_size)
 {
 	struct prefix msg_upstream_addr;
+	struct pim_interface *pim_ifp;
 	uint8_t msg_num_groups;
 	uint16_t msg_holdtime;
 	int addr_offset;
@@ -163,6 +164,7 @@ int pim_joinprune_recv(struct interface *ifp, struct pim_neighbor *neigh,
 
 	buf = tlv_buf;
 	pastend = tlv_buf + tlv_buf_size;
+	pim_ifp = ifp->info;
 
 	/*
 	  Parse ucast addr
@@ -231,6 +233,9 @@ int pim_joinprune_recv(struct interface *ifp, struct pim_neighbor *neigh,
 		uint16_t msg_num_pruned_sources;
 		int source;
 		struct pim_ifchannel *starg_ch = NULL, *sg_ch = NULL;
+		struct prefix_list *bop;
+		enum prefix_list_type bop_type;
+		struct prefix grp_pfx;
 
 		memset(&sg, 0, sizeof(struct prefix_sg));
 		addr_offset = pim_parse_addr_group(&sg, buf, pastend - buf);
@@ -273,6 +278,13 @@ int pim_joinprune_recv(struct interface *ifp, struct pim_neighbor *neigh,
 				src_str, ifp->name);
 		}
 
+		/* boundary check */
+		grp_pfx.family = sg.family;
+		grp_pfx.prefixlen = sg.prefixlen;
+		grp_pfx.u.prefix4 = sg.grp;
+		bop = prefix_list_lookup(AFI_IP, pim_ifp->boundary_oil_plist);
+		bop_type = bop ? prefix_list_apply(bop, &grp_pfx) : PREFIX_PERMIT;
+
 		/* Scan joined sources */
 		for (source = 0; source < msg_num_joined_sources; ++source) {
 			addr_offset = pim_parse_addr_source(
@@ -282,6 +294,10 @@ int pim_joinprune_recv(struct interface *ifp, struct pim_neighbor *neigh,
 			}
 
 			buf += addr_offset;
+
+			/* if we are filtering this group, skip the join */
+			if (bop_type == PREFIX_DENY)
+				continue;
 
 			recv_join(ifp, neigh, msg_holdtime,
 				  msg_upstream_addr.u.prefix4, &sg,
@@ -304,6 +320,11 @@ int pim_joinprune_recv(struct interface *ifp, struct pim_neighbor *neigh,
 			}
 
 			buf += addr_offset;
+
+			/* if we are filtering this group, skip the prune */
+			if (bop_type == PREFIX_DENY)
+				continue;
+
 			recv_prune(ifp, neigh, msg_holdtime,
 				   msg_upstream_addr.u.prefix4, &sg,
 				   msg_source_flags);
@@ -335,7 +356,7 @@ int pim_joinprune_recv(struct interface *ifp, struct pim_neighbor *neigh,
 				}
 			}
 		}
-		if (starg_ch)
+		if (starg_ch && bop_type == PREFIX_PERMIT)
 			pim_ifchannel_set_star_g_join_state(starg_ch, 1, 0);
 		starg_ch = NULL;
 	} /* scan groups */
