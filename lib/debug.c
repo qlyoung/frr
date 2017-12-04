@@ -23,6 +23,7 @@
 #include "memory.h"
 #include "debug.h"
 #include "list.h"
+#include "vty.h"
 
 DEFINE_MTYPE_STATIC(LIB, TTABLE, "ASCII table")
 
@@ -55,6 +56,43 @@ void debug_init(void)
 void debug_register(struct debug *dbg)
 {
 	hash_get(debugs, dbg, hash_alloc_intern);
+}
+
+enum debug_mode debug_set_mode(int key, enum debug_mode mode)
+{
+	
+}
+
+enum debug_mode debug_add_mode(int key, enum debug_mode mode)
+{
+}
+
+enum debug_mode debug_rm_mode(int key, enum debug_mode mode, struct vty *vty)
+{
+	static struct debug holder = { key, 0x00 };
+	struct debug *dbg = hash_lookup(debugs, &holder);
+
+	switch (mode) {
+	case DEBUG_ALL:
+		dbg->mode = DEBUG_OFF;
+	case DEBUG_TERM:
+		vty_out(vty, "%s debugging is off", dbg->name);
+		if (dbg->mode == DEBUG_ALL)
+			dbg->mode = DEBUG_CONF;
+		else
+			dbg->mode = DEBUG_OFF;
+		break;
+	case DEBUG_CONF:
+		dbg->mode = DEBUG_OFF;
+		break;
+	DEBUG_OFF:
+	default:
+		break;
+
+	}
+	if (dbg->mode == DEBUG_ALL || dbg->mode == DEBUG_TERM)
+		vty_out(vty, "%s debugging is off", dbg->name);
+
 }
 
 bool debug_is_on(int key)

@@ -48,8 +48,6 @@ struct debug {
 	_Atomic enum debug_mode mode;
 	/* human-readable name */
 	const char *name;
-	/* configuration file line */
-	const char *configline;
 	/* extra data */
 	void *data;
 };
