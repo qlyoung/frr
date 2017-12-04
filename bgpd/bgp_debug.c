@@ -30,6 +30,7 @@
 #include "memory.h"
 #include "queue.h"
 #include "filter.h"
+#include "debug.h"
 
 #include "bgpd/bgpd.h"
 #include "bgpd/bgp_aspath.h"
@@ -43,6 +44,7 @@
 #include "bgpd/bgp_label.h"
 #include "bgpd/bgp_evpn.h"
 
+#if 0
 unsigned long conf_bgp_debug_as4;
 unsigned long conf_bgp_debug_neighbor_events;
 unsigned long conf_bgp_debug_events;
@@ -68,7 +70,26 @@ unsigned long term_bgp_debug_zebra;
 unsigned long term_bgp_debug_allow_martians;
 unsigned long term_bgp_debug_nht;
 unsigned long term_bgp_debug_update_groups;
+#endif
 
+struct debug *bgp_debugs[] = {
+	{ BGP_DEBUG_AS4, DEBUG_OFF, "AS4", NULL },
+	{ BGP_DEBUG_AS4_SEGMENT, DEBUG_OFF, "AS4 segment", NULL },
+	{ BGP_DEBUG_BESTPATH, DEBUG_OFF, "Neighbor events", NULL },
+	{ BGP_DEBUG_PACKET, DEBUG_OFF, "Packets", NULL },
+	{ BGP_DEBUG_KEEPALIVE, DEBUG_OFF, "Keepalives", NULL },
+	{ BGP_DEBUG_UPDATE_IN, DEBUG_OFF, "Inbound UPDATEs", NULL },
+	{ BGP_DEBUG_UPDATE_OUT, DEBUG_OFF, "Outbound UPDATEs", NULL },
+	{ BGP_DEBUG_UPDATE, DEBUG_OFF, "UPDATEs", NULL },
+	{ BGP_DEBUG_UPDATE_PREFIX, DEBUG_OFF, "UPDATE prefixes", NULL },
+	{ BGP_DEBUG_ZEBRA, DEBUG_OFF, "Zebra info", NULL },
+	{ BGP_DEBUG_ALLOW_MARTIANS, DEBUG_OFF, "Martians", NULL },
+	{ BGP_DEBUG_NHT, DEBUG_OFF, "Nexthop tracking", NULL },
+	{ BGP_DEBUG_UPDATE_GROUPS, DEBUG_OFF, "Dynamic update groups", NULL },
+	{ 0x00 }
+}
+
+#if 0
 struct list *bgp_debug_neighbor_events_peers = NULL;
 struct list *bgp_debug_keepalive_peers = NULL;
 struct list *bgp_debug_update_out_peers = NULL;
@@ -76,6 +97,7 @@ struct list *bgp_debug_update_in_peers = NULL;
 struct list *bgp_debug_update_prefixes = NULL;
 struct list *bgp_debug_bestpath_prefixes = NULL;
 struct list *bgp_debug_zebra_prefixes = NULL;
+#endif
 
 /* messages for BGP-4 status */
 const struct message bgp_status_msg[] = {{Idle, "Idle"},
@@ -548,10 +570,10 @@ DEFUN (debug_bgp_as4,
        "BGP AS4 actions\n")
 {
 	if (vty->node == CONFIG_NODE)
-		DEBUG_ON(as4, AS4);
+		debug_set_mode(BGP_DEBUG_AS4, DEBUG_ALL);
 	else {
-		TERM_DEBUG_ON(as4, AS4);
-		vty_out(vty, "BGP as4 debugging is on\n");
+		debug_add_mode(BGP_DEBUG_AS4, DEBUG_TERM);
+		vty_out(vty, "%s debugging is on\n", debug_name(BGP_DEBUG_AS4));
 	}
 	return CMD_SUCCESS;
 }
@@ -565,10 +587,12 @@ DEFUN (no_debug_bgp_as4,
        "BGP AS4 actions\n")
 {
 	if (vty->node == CONFIG_NODE)
-		DEBUG_OFF(as4, AS4);
+		debut_set_mode(BGP_DEBUG_AS4, DEBUG_OFF);
 	else {
-		TERM_DEBUG_OFF(as4, AS4);
-		vty_out(vty, "BGP as4 debugging is off\n");
+		debug_rm_mode(BGP_DEBUG_AS4, DEBUG_TERM);
+		debug_status_out(BGP_DEBUG_AS4, false);
+		vty_out(vty, "%s debugging is off\n",
+		      	debug_name(BGP_DEBUG_AS4));
 	}
 	return CMD_SUCCESS;
 }
