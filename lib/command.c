@@ -110,6 +110,7 @@ const char *node_names[] = {
 	"as list",		    // AS_LIST_NODE,
 	"community list",	   // COMMUNITY_LIST_NODE,
 	"routemap",		    // RMAP_NODE,
+	"pbr-map",		    // PBRMAP_NODE,
 	"smux",			    // SMUX_NODE,
 	"dump",			    // DUMP_NODE,
 	"forwarding",		    // FORWARDING_NODE,
@@ -1314,6 +1315,7 @@ void cmd_exit(struct vty *vty)
 	case KEYCHAIN_NODE:
 	case MASC_NODE:
 	case RMAP_NODE:
+	case PBRMAP_NODE:
 	case VTY_NODE:
 		vty->node = CONFIG_NODE;
 		break;
@@ -1411,6 +1413,7 @@ DEFUN (config_end,
 	case BGP_EVPN_VNI_NODE:
 	case BGP_IPV6L_NODE:
 	case RMAP_NODE:
+	case PBRMAP_NODE:
 	case OSPF_NODE:
 	case OSPF6_NODE:
 	case LDP_NODE:
