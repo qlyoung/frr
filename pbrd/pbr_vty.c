@@ -44,10 +44,46 @@ DEFUN_NOSH (pbr_map,
 {
 	const char *pbrm_name = argv[1]->arg;
 	uint32_t seqno = atoi(argv[3]->arg);
-	struct pbr_map *pbrm;
+	struct pbr_map_sequence *pbrms;
 
-	pbrm = pbrm_get(pbrm_name, seqno);
-	VTY_PUSH_CONTEXT(PBRMAP_NODE, pbrm);
+	pbrms = pbrm_get(pbrm_name, seqno);
+	VTY_PUSH_CONTEXT(PBRMAP_NODE, pbrms);
+
+	return CMD_SUCCESS;
+}
+
+DEFPY (pbr_map_match_src,
+       pbr_map_match_src_cmd,
+       "match src-ip <A.B.C.D/M|X:X::X:X/M>$prefix",
+       "Match the rest of the command\n"
+       "Choose the src ip or ipv6 prefix to use\n"
+       "v4 Prefix\n"
+       "v6 Prefix\n")
+{
+	struct pbr_map_sequence *pbrms = VTY_GET_CONTEXT(pbr_map_sequence);
+
+	if (!pbrms->src)
+		pbrms->src = prefix_new();
+
+	prefix_copy(pbrms->src, prefix);
+
+	return CMD_SUCCESS;
+}
+
+DEFPY (pbr_map_match_dst,
+       pbr_map_match_dst_cmd,
+       "match dst-ip <A.B.C.D/M|X:X::X:X/M>$prefix",
+       "Match the rest of the command\n"
+       "Choose the src ip or ipv6 prefix to use\n"
+       "v4 Prefix\n"
+       "v6 Prefix\n")
+{
+	struct pbr_map_sequence *pbrms = VTY_GET_CONTEXT(pbr_map_sequence);
+
+	if (!pbrms->dst)
+		pbrms->dst = prefix_new();
+
+	prefix_copy(pbrms->dst, prefix);
 
 	return CMD_SUCCESS;
 }
@@ -82,14 +118,38 @@ static int pbr_interface_config_write(struct vty *vty)
 /* PBR map node structure. */
 static struct cmd_node pbr_map_node = {PBRMAP_NODE, "%s(config-pbr-map)# ", 1};
 
-static int pbr_map_config_write(struct vty *vty)
+static int pbr_vty_map_config_write_sequence(struct vty *vty,
+					     struct pbr_map *pbrm,
+					     struct pbr_map_sequence *pbrms)
+{
+	char buff[PREFIX_STRLEN];
+
+	vty_out (vty, "pbr-map %s seq %u\n",
+		 pbrm->name, pbrms->seqno);
+
+	if (pbrms->src)
+		vty_out(vty, "  match src-ip %s\n",
+			prefix2str(pbrms->src, buff, sizeof buff));
+
+	if (pbrms->dst)
+		vty_out(vty, "  match dst-ip %s\n",
+			prefix2str(pbrms->dst, buff, sizeof buff));
+
+	vty_out (vty, "!\n");
+	return 1;
+}
+
+static int pbr_vty_map_config_write(struct vty *vty)
 {
 	struct pbr_map *pbrm;
 
 	RB_FOREACH(pbrm, pbr_map_entry_head, &pbr_maps) {
-		vty_out(vty, "pbr-map %s seq %u\n",
-			pbrm->name, pbrm->seqno);
-		vty_out(vty, "!\n");
+		struct pbr_map_sequence *pbrms;
+		struct listnode *node;
+
+		for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, node, pbrms)) {
+			pbr_vty_map_config_write_sequence(vty, pbrm, pbrms);
+		}
 	}
 
 	return 1;
@@ -102,11 +162,14 @@ void pbr_vty_init(void)
 	if_cmd_init();
 
 	install_node(&pbr_map_node,
-		     pbr_map_config_write);
+		     pbr_vty_map_config_write);
 
 	install_default(PBRMAP_NODE);
 
 	install_element(CONFIG_NODE, &pbr_map_cmd);
 	install_element(INTERFACE_NODE, &pbr_policy_cmd);
+
+	install_element(PBRMAP_NODE, &pbr_map_match_src_cmd);
+	install_element(PBRMAP_NODE, &pbr_map_match_dst_cmd);
 	return;
 }
