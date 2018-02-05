@@ -204,6 +204,7 @@ void connected_up(struct interface *ifp, struct connected *ifc)
 	struct prefix p;
 	struct nexthop nh = {
 		.type = NEXTHOP_TYPE_IFINDEX, .ifindex = ifp->ifindex,
+		.vrf_id = ifp->vrf_id,
 	};
 
 	if (!CHECK_FLAG(ifc->conf, ZEBRA_IFC_REAL))
@@ -238,11 +239,11 @@ void connected_up(struct interface *ifp, struct connected *ifc)
 		break;
 	}
 
-	rib_add(afi, SAFI_UNICAST, ifp->vrf_id, ifp->vrf_id,
+	rib_add(afi, SAFI_UNICAST, ifp->vrf_id,
 		ZEBRA_ROUTE_CONNECT, 0, 0,
 		&p, NULL, &nh, RT_TABLE_MAIN, ifp->metric, 0, 0, 0);
 
-	rib_add(afi, SAFI_MULTICAST, ifp->vrf_id, ifp->vrf_id,
+	rib_add(afi, SAFI_MULTICAST, ifp->vrf_id,
 		ZEBRA_ROUTE_CONNECT, 0, 0,
 		&p, NULL, &nh, RT_TABLE_MAIN, ifp->metric, 0, 0, 0);
 
@@ -363,6 +364,7 @@ void connected_down(struct interface *ifp, struct connected *ifc)
 	struct prefix p;
 	struct nexthop nh = {
 		.type = NEXTHOP_TYPE_IFINDEX, .ifindex = ifp->ifindex,
+		.vrf_id = ifp->vrf_id,
 	};
 
 	if (!CHECK_FLAG(ifc->conf, ZEBRA_IFC_REAL))

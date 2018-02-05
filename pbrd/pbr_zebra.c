@@ -152,7 +152,6 @@ void route_add(struct prefix *p, struct nexthop *nh)
 
 	memset(&api, 0, sizeof(api));
 	api.vrf_id = VRF_DEFAULT;
-	api.nh_vrf_id = VRF_DEFAULT;
 	api.type = ZEBRA_ROUTE_PBR;
 	api.safi = SAFI_UNICAST;
 	memcpy(&api.prefix, p, sizeof(*p));
@@ -160,6 +159,7 @@ void route_add(struct prefix *p, struct nexthop *nh)
 	SET_FLAG(api.message, ZAPI_MESSAGE_NEXTHOP);
 
 	api_nh = &api.nexthops[0];
+	api_nh->vrf_id = VRF_DEFAULT;
 	api_nh->gate.ipv4 = nh->gate.ipv4;
 	api_nh->type = nh->type;
 	api_nh->ifindex = nh->ifindex;
@@ -174,7 +174,6 @@ void route_delete(struct prefix *p)
 
 	memset(&api, 0, sizeof(api));
 	api.vrf_id = VRF_DEFAULT;
-	api.nh_vrf_id = VRF_DEFAULT;
 	api.type = ZEBRA_ROUTE_PBR;
 	api.safi = SAFI_UNICAST;
 	memcpy(&api.prefix, p, sizeof(*p));

@@ -443,8 +443,9 @@ static int netlink_route_change_read_unicast(struct sockaddr_nl *snl,
 				if (ifp)
 					nh_vrf_id = ifp->vrf_id;
 			}
+			nh.vrf_id = nh_vrf_id;
 
-			rib_add(afi, SAFI_UNICAST, vrf_id, nh_vrf_id, proto,
+			rib_add(afi, SAFI_UNICAST, vrf_id, proto,
 				0, flags, &p, NULL, &nh, table, metric,
 				mtu, distance, tag);
 		} else {
@@ -463,13 +464,13 @@ static int netlink_route_change_read_unicast(struct sockaddr_nl *snl,
 			re->metric = metric;
 			re->mtu = mtu;
 			re->vrf_id = vrf_id;
-			re->nh_vrf_id = vrf_id;
 			re->table = table;
 			re->nexthop_num = 0;
 			re->uptime = time(NULL);
 			re->tag = tag;
 
 			for (;;) {
+				vrf_id_t nh_vrf_id;
 				if (len < (int)sizeof(*rtnh)
 				    || rtnh->rtnh_len > len)
 					break;
@@ -485,8 +486,10 @@ static int netlink_route_change_read_unicast(struct sockaddr_nl *snl,
 					ifp = if_lookup_by_index(index,
 								 VRF_UNKNOWN);
 					if (ifp)
-						re->nh_vrf_id = ifp->vrf_id;
-				}
+						nh_vrf_id = ifp->vrf_id;
+				} else
+					nh_vrf_id = vrf_id;
+
 				gate = 0;
 				if (rtnh->rtnh_len > sizeof(*rtnh)) {
 					memset(tb, 0, sizeof(tb));
@@ -503,24 +506,28 @@ static int netlink_route_change_read_unicast(struct sockaddr_nl *snl,
 						if (index)
 							route_entry_nexthop_ipv4_ifindex_add(
 								re, gate,
-								prefsrc, index);
+								prefsrc, index,
+								nh_vrf_id);
 						else
 							route_entry_nexthop_ipv4_add(
 								re, gate,
-								prefsrc);
+								prefsrc,
+								nh_vrf_id);
 					} else if (rtm->rtm_family
 						   == AF_INET6) {
 						if (index)
 							route_entry_nexthop_ipv6_ifindex_add(
 								re, gate,
-								index);
+								index,
+								nh_vrf_id);
 						else
 							route_entry_nexthop_ipv6_add(
-								re, gate);
+								re, gate,
+								nh_vrf_id);
 					}
 				} else
-					route_entry_nexthop_ifindex_add(re,
-									index);
+					route_entry_nexthop_ifindex_add(
+						re, index, nh_vrf_id);
 
 				len -= NLMSG_ALIGN(rtnh->rtnh_len);
 				rtnh = RTNH_NEXT(rtnh);

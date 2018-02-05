@@ -1149,6 +1149,7 @@ static zebra_nhlfe_t *nhlfe_add(zebra_lsp_t *lsp, enum lsp_types_t lsp_type,
 	}
 	nexthop_add_labels(nexthop, lsp_type, 1, &out_label);
 
+	nexthop->vrf_id = VRF_DEFAULT;
 	nexthop->type = gtype;
 	switch (nexthop->type) {
 	case NEXTHOP_TYPE_IPV4:
