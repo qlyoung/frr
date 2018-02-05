@@ -24,6 +24,7 @@
 #include "vty.h"
 #include "command.h"
 #include "prefix.h"
+#include "vrf.h"
 #include "nexthop.h"
 #include "nexthop_group.h"
 #include "log.h"
@@ -31,6 +32,7 @@
 #include "pbrd/pbr_zebra.h"
 #include "pbrd/pbr_map.h"
 #include "pbrd/pbr_vty.h"
+#include "pbrd/pbr_event.h"
 #ifndef VTYSH_EXTRACT_PL
 #include "pbrd/pbr_vty_clippy.c"
 #endif
@@ -47,7 +49,7 @@ DEFUN_NOSH (pbr_map,
 	uint32_t seqno = atoi(argv[3]->arg);
 	struct pbr_map_sequence *pbrms;
 
-	pbrms = pbrm_get(pbrm_name, seqno);
+	pbrms = pbrms_get(pbrm_name, seqno);
 	VTY_PUSH_CONTEXT(PBRMAP_NODE, pbrms);
 
 	return CMD_SUCCESS;
@@ -62,11 +64,17 @@ DEFPY (pbr_map_match_src,
        "v6 Prefix\n")
 {
 	struct pbr_map_sequence *pbrms = VTY_GET_CONTEXT(pbr_map_sequence);
+	struct pbr_event *pbre;
 
 	if (!pbrms->src)
 		pbrms->src = prefix_new();
 
 	prefix_copy(pbrms->src, prefix);
+
+	pbre = pbr_event_new();
+	pbre->event = PBR_MAP_MODIFY;
+	strlcpy(pbre->name, pbrms->parent->name, sizeof(pbre->name));
+	pbr_event_enqueue(pbre);
 
 	return CMD_SUCCESS;
 }
@@ -80,11 +88,17 @@ DEFPY (pbr_map_match_dst,
        "v6 Prefix\n")
 {
 	struct pbr_map_sequence *pbrms = VTY_GET_CONTEXT(pbr_map_sequence);
+	struct pbr_event *pbre;
 
 	if (!pbrms->dst)
 		pbrms->dst = prefix_new();
 
 	prefix_copy(pbrms->dst, prefix);
+
+	pbre = pbr_event_new();
+	pbre->event = PBR_MAP_MODIFY;
+	strlcpy(pbre->name, pbrms->parent->name, sizeof(pbre->name));
+	pbr_event_enqueue(pbre);
 
 	return CMD_SUCCESS;
 }
@@ -98,6 +112,7 @@ DEFPY (pbr_map_nexthop_group,
 {
 	struct pbr_map_sequence *pbrms = VTY_GET_CONTEXT(pbr_map_sequence);
 	struct nexthop_group_cmd *nhgc;
+	struct pbr_event *pbre;
 
 	nhgc = nhgc_find(name);
 	if (!nhgc) {
@@ -110,6 +125,11 @@ DEFPY (pbr_map_nexthop_group,
 		XFREE(MTYPE_TMP, pbrms->nhgrp_name);
 
 	pbrms->nhgrp_name = XSTRDUP(MTYPE_TMP, name);
+
+	pbre = pbr_event_new();
+	pbre->event = PBR_MAP_MODIFY;
+	strlcpy(pbre->name, pbrms->parent->name, sizeof(pbre->name));
+	pbr_event_enqueue(pbre);
 
 	return CMD_SUCCESS;
 }
@@ -146,6 +166,21 @@ DEFPY (pbr_policy,
        "Policy to use\n"
        "Name of the pbr-map to apply\n")
 {
+	VTY_DECLVAR_CONTEXT(interface, ifp);
+	struct pbr_map *pbrm;
+
+	/*
+	 * In the future we would probably want to
+	 * allow pre-creation of the pbr-map
+	 * here.  But for getting something
+	 * up and running let's not do that yet.
+	 */
+	pbrm = pbrm_find(mapname);
+	if (!pbrm)
+		return CMD_WARNING_CONFIG_FAILED;
+
+	pbr_map_add_interface(pbrm, ifp);
+
 	return CMD_SUCCESS;
 }
 static struct cmd_node interface_node = {
@@ -154,7 +189,22 @@ static struct cmd_node interface_node = {
 
 static int pbr_interface_config_write(struct vty *vty)
 {
-	vty_out(vty, "!\n");
+	struct interface *ifp;
+	struct vrf *vrf;
+
+	RB_FOREACH (vrf, vrf_name_head, &vrfs_by_name) {
+		FOR_ALL_INTERFACES (vrf, ifp) {
+			if (vrf->vrf_id == VRF_DEFAULT)
+				vty_frame(vty, "interface %s\n", ifp->name);
+			else
+				vty_frame(vty, "interface %s vrf %s\n",
+					  ifp->name, vrf->name);
+
+			pbr_map_write_interfaces(vty, ifp);
+
+			vty_endframe(vty, "!\n");
+		}
+	}
 
 	return 1;
 }

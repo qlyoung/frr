@@ -22,20 +22,58 @@
 #include <zebra.h>
 
 #include <log.h>
+#include <nexthop.h>
 
 #include "pbrd/pbr_nht.h"
+#include "pbrd/pbr_event.h"
 
 void pbr_nhgroup_add_cb(const char *name)
 {
+	struct pbr_event *pbre;
+
+	pbre = pbr_event_new();
+
+	pbre->event = PBR_NHG_ADD;
+	strlcpy(pbre->name, name, sizeof(pbre->name));
+
+	pbr_event_enqueue(pbre);
 	zlog_debug("Received ADD cb for %s", name);
 }
 
 void pbr_nhgroup_modify_cb(const char *name)
 {
+	struct pbr_event *pbre;
+
+	pbre = pbr_event_new();
+
+	pbre->event = PBR_NHG_MODIFY;
+	strlcpy(pbre->name, name, sizeof(pbre->name));
+
+	pbr_event_enqueue(pbre);
 	zlog_debug("Received MODIFY cb for %s", name);
 }
 
 void pbr_nhgroup_delete_cb(const char *name)
 {
+	struct pbr_event *pbre;
+
+	pbre = pbr_event_new();
+
+	pbre->event = PBR_NHG_DELETE;
+	strlcpy(pbre->name, name, sizeof(pbre->name));
+
+	pbr_event_enqueue(pbre);
 	zlog_debug("Recieved DELETE cb for %s", name);
+}
+
+bool pbr_nht_nexthop_valid(struct nexthop *nhop)
+{
+	zlog_debug("%s %p", __PRETTY_FUNCTION__, nhop);
+	return true;
+}
+
+bool pbr_nht_nexthop_group_valid(const char *name)
+{
+	zlog_debug("%s(%s)", __PRETTY_FUNCTION__, name);
+	return true;
 }
