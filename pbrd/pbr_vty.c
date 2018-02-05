@@ -25,6 +25,7 @@
 #include "command.h"
 #include "prefix.h"
 #include "nexthop.h"
+#include "nexthop_group.h"
 #include "log.h"
 
 #include "pbrd/pbr_zebra.h"
@@ -88,19 +89,62 @@ DEFPY (pbr_map_match_dst,
 	return CMD_SUCCESS;
 }
 
+DEFPY (pbr_map_nexthop_group,
+       pbr_map_nexthop_group_cmd,
+       "set nexthop-group NAME$name",
+       "Set for the PBR-MAP\n"
+       "nexthop-group to use\n"
+       "The name of the nexthop-group\n")
+{
+	struct pbr_map_sequence *pbrms = VTY_GET_CONTEXT(pbr_map_sequence);
+	struct nexthop_group_cmd *nhgc;
+
+	nhgc = nhgc_find(name);
+	if (!nhgc) {
+		vty_out(vty, "Specified nexthop-group %s does not exist\n",
+			name);
+		vty_out(vty, "PBR-MAP will not be applied until it is created\n");
+	}
+
+	if (pbrms->nhgrp_name)
+		XFREE(MTYPE_TMP, pbrms->nhgrp_name);
+
+	pbrms->nhgrp_name = XSTRDUP(MTYPE_TMP, name);
+
+	return CMD_SUCCESS;
+}
+
+DEFPY (pbr_table_range,
+       pbr_table_range_cmd,
+       "[no] pbr table range (10-15)$start (16-20)$end",
+       NO_STR
+       "Policy based routing\n"
+       "Policy based routing table\n"
+       "Table range\n"
+       "Initial value of range\n"
+       "Final value of range\n")
+{
+	return CMD_SUCCESS;
+}
+
+DEFPY (pbr_rule_range,
+       pbr_rule_range_cmd,
+       "[no] pbr rule range (10-15)$start (16-20)$end",
+       NO_STR
+       "Policy based routing\n"
+       "Policy based routing rule\n"
+       "Rule range\n"
+       "Initial value of range\n"
+       "Final value of range\n")
+{
+	return CMD_SUCCESS;
+}
+
 DEFPY (pbr_policy,
        pbr_policy_cmd,
-       "pbr-policy (1-100000)$seqno {src <A.B.C.D/M|X:X::X:X/M>$src|dest <A.B.C.D/M|X:X::X:X/M>$dst} nexthop-group NAME$nhgroup",
+       "pbr-policy NAME$mapname",
        "Policy to use\n"
-       "Sequence Number\n"
-       "The Source\n"
-       "IP Address\n"
-       "IPv6 Address\n"
-       "dest\n"
-       "IP Address\n"
-       "IPv6 Address\n"
-       "Nexthop group\n"
-       "Name of the Nexthop Group\n")
+       "Name of the pbr-map to apply\n")
 {
 	return CMD_SUCCESS;
 }
@@ -135,6 +179,9 @@ static int pbr_vty_map_config_write_sequence(struct vty *vty,
 		vty_out(vty, "  match dst-ip %s\n",
 			prefix2str(pbrms->dst, buff, sizeof buff));
 
+	if (pbrms->nhgrp_name)
+		vty_out(vty, "  set nexthop-group %s\n", pbrms->nhgrp_name);
+
 	vty_out (vty, "!\n");
 	return 1;
 }
@@ -168,8 +215,11 @@ void pbr_vty_init(void)
 
 	install_element(CONFIG_NODE, &pbr_map_cmd);
 	install_element(INTERFACE_NODE, &pbr_policy_cmd);
-
+	install_element(CONFIG_NODE, &pbr_table_range_cmd);
+	install_element(CONFIG_NODE, &pbr_rule_range_cmd);
 	install_element(PBRMAP_NODE, &pbr_map_match_src_cmd);
 	install_element(PBRMAP_NODE, &pbr_map_match_dst_cmd);
+	install_element(PBRMAP_NODE, &pbr_map_nexthop_group_cmd);
+
 	return;
 }
