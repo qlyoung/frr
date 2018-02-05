@@ -25,9 +25,14 @@
 #include "linklist.h"
 #include "prefix.h"
 #include "table.h"
+#include "nexthop.h"
 #include "memory.h"
+#include "log.h"
+#include "vty.h"
 
 #include "pbr_map.h"
+#include "pbr_event.h"
+#include "pbr_nht.h"
 
 static __inline int pbr_map_compare(const struct pbr_map *pbrmap1,
 				    const struct pbr_map *pbrmap2);
@@ -61,7 +66,47 @@ static void pbr_map_sequence_delete(struct pbr_map_sequence *pbrms)
 	XFREE(MTYPE_TMP, pbrms);
 }
 
-static struct pbr_map *pbrm_find(const char *name)
+static int pbr_map_interface_compare(const struct interface *ifp1,
+				     const struct interface *ifp2)
+{
+	return strcmp(ifp1->name, ifp2->name);
+}
+
+static void pbr_map_interface_delete(struct interface *ifp)
+{
+	return;
+}
+
+void pbr_map_add_interface(struct pbr_map *pbrm, struct interface *ifp_add)
+{
+	struct listnode *node;
+	struct interface *ifp;
+
+	for (ALL_LIST_ELEMENTS_RO(pbrm->incoming, node, ifp)) {
+		if (ifp_add == ifp)
+			return;
+	}
+
+	listnode_add_sort(pbrm->incoming, ifp_add);
+}
+
+void pbr_map_write_interfaces(struct vty *vty, struct interface *ifp_find)
+{
+	struct pbr_map *pbrm;
+	struct listnode *node;
+	struct interface *ifp;
+
+	RB_FOREACH (pbrm, pbr_map_entry_head, &pbr_maps) {
+		for (ALL_LIST_ELEMENTS_RO(pbrm->incoming, node, ifp)) {
+			if (ifp == ifp_find) {
+				vty_out(vty, "  pbr-policy %s\n", pbrm->name);
+				break;
+			}
+		}
+	}
+}
+
+struct pbr_map *pbrm_find(const char *name)
 {
 	struct pbr_map pbrm;
 
@@ -70,11 +115,12 @@ static struct pbr_map *pbrm_find(const char *name)
 	return RB_FIND(pbr_map_entry_head, &pbr_maps, &pbrm);
 }
 
-extern struct pbr_map_sequence *pbrm_get(const char *name, uint32_t seqno)
+extern struct pbr_map_sequence *pbrms_get(const char *name, uint32_t seqno)
 {
 	struct pbr_map *pbrm;
 	struct pbr_map_sequence *pbrms;
 	struct listnode *node, *nnode;
+	struct pbr_event *pbre;
 
 	pbrm = pbrm_find(name);
 	if (!pbrm) {
@@ -87,7 +133,17 @@ extern struct pbr_map_sequence *pbrm_get(const char *name, uint32_t seqno)
 		pbrm->seqnumbers->del =
 			 (void (*)(void *))pbr_map_sequence_delete;
 
+		pbrm->incoming = list_new();
+		pbrm->incoming->cmp =
+			(int (*)(void *, void *))pbr_map_interface_compare;
+		pbrm->incoming->del =
+			(void (*)(void *))pbr_map_interface_delete;
+
 		RB_INSERT(pbr_map_entry_head, &pbr_maps, pbrm);
+
+		pbre = pbr_event_new();
+		pbre->event = PBR_MAP_ADD;
+		strlcpy(pbre->name, name, sizeof(pbre->name));
 	}
 
 	for (ALL_LIST_ELEMENTS(pbrm->seqnumbers, node, nnode, pbrms)) {
@@ -105,7 +161,80 @@ extern struct pbr_map_sequence *pbrm_get(const char *name, uint32_t seqno)
 		listnode_add_sort(pbrm->seqnumbers, pbrms);
 	}
 
+	if (pbre)
+		pbr_event_enqueue(pbre);
+
 	return pbrms;
+}
+
+static void
+pbr_map_sequence_check_nexthops_valid(struct pbr_map_sequence *pbrms)
+{
+	/*
+	 * Check validness of the nexthop or nexthop-group
+	 */
+	if (!pbrms->nhop && !pbrms->nhgrp_name)
+		pbrms->reason |= PBR_MAP_INVALID_NO_NEXTHOPS;
+
+	if (pbrms->nhop && pbrms->nhgrp_name)
+		pbrms->reason |= PBR_MAP_INVALID_BOTH_NHANDGRP;
+
+	if (pbrms->nhop && !pbr_nht_nexthop_valid(pbrms->nhop))
+		pbrms->reason |= PBR_MAP_INVALID_NEXTHOP;
+
+	if (pbrms->nhgrp_name
+	    && !pbr_nht_nexthop_group_valid(pbrms->nhgrp_name))
+		pbrms->reason |= PBR_MAP_INVALID_NEXTHOP_GROUP;
+}
+
+static void pbr_map_sequence_check_src_dst_valid(struct pbr_map_sequence *pbrms)
+{
+	if (!pbrms->src && !pbrms->dst)
+		pbrms->reason |= PBR_MAP_INVALID_SRCDST;
+}
+
+/*
+ * Checks to see if we think that the pbmrs is valid.  If we think
+ * the config is valid return true.
+ */
+static void pbr_map_sequence_check_valid(struct pbr_map_sequence *pbrms)
+{
+	pbr_map_sequence_check_nexthops_valid(pbrms);
+
+	pbr_map_sequence_check_src_dst_valid(pbrms);
+}
+
+/*
+ * For a given PBR-MAP check to see if we think it is a
+ * valid config or not.  If so note that it is and return
+ * that we are valid.
+ */
+extern bool pbr_map_check_valid(const char *name)
+{
+	struct pbr_map *pbrm;
+	struct pbr_map_sequence *pbrms;
+	struct listnode *node;
+
+	pbrm = pbrm_find(name);
+	if (!pbrm) {
+		zlog_debug("%s: Specified PBR-MAP(%s) does not exist?",
+			   __PRETTY_FUNCTION__, name);
+		return false;
+	}
+
+	pbrm->valid = true;
+	for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, node, pbrms)) {
+		pbrms->reason = 0;
+		pbr_map_sequence_check_valid(pbrms);
+		/*
+		 * A pbr_map_sequence that is invalid causes
+		 * the whole shebang to be invalid
+		 */
+		if (pbrms->reason != 0)
+			pbrm->valid = false;
+	}
+
+	return pbrm->valid;
 }
 
 extern void pbr_map_init(void)

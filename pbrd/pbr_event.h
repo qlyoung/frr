@@ -1,6 +1,6 @@
 /*
- * Zebra connect library for PBR
- * Copyright (C) Cumulus Networks, Inc.
+ * PBR-event Header
+ * Copyright (C) 2018 Cumulus Networks, Inc.
  *               Donald Sharp
  *
  * This file is part of FRR.
@@ -19,13 +19,37 @@
  * with this program; see the file COPYING; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
  */
-#ifndef __PBR_ZEBRA_H__
-#define __PBR_ZEBRA_H__
+#ifndef __PBR_EVENT_H__
+#define __PBR_EVENT_H__
 
-extern void pbr_zebra_init(void);
+enum pbr_events {
+	PBR_NHG_ADD,
+	PBR_NHG_MODIFY,
+	PBR_NHG_DELETE,
+	PBR_MAP_ADD,
+	PBR_MAP_MODIFY,
+	PBR_MAP_DELETE,
+	PBR_NH_CHANGED,
+};
 
-extern void route_add(struct prefix *p, struct nexthop *nh);
-extern void route_delete(struct prefix *p);
+struct pbr_event {
+	enum pbr_events event;
 
-extern void pbr_send_rnh(struct nexthop *nhop, bool reg);
+	char name[100];
+	union g_addr addr;
+};
+
+/*
+ * Return a event structure that can be filled in and enqueued.
+ * Assume this memory is owned by the event subsystem.
+ */
+extern struct pbr_event *pbr_event_new(void);
+
+/*
+ * Enqueue an event for later processing
+ */
+void pbr_event_enqueue(struct pbr_event *pbre);
+
+extern void pbr_event_init(void);
+extern void pbr_event_stop(void);
 #endif
