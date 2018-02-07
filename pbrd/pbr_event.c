@@ -25,8 +25,11 @@
 #include <workqueue.h>
 #include <nexthop.h>
 #include <log.h>
+#include <vty.h>
 
 #include "pbrd/pbr_event.h"
+#include "pbrd/pbr_map.h"
+#include "pbrd/pbr_nht.h"
 
 struct work_queue *pbr_event_wq;
 
@@ -34,12 +37,16 @@ static const char *pbr_event_wqentry2str(struct pbr_event *pbre,
 					 char *buffer, size_t buflen)
 {
 	switch(pbre->event) {
-	case PBR_NHG_ADD:
+	case PBR_NHG_NEW:
 		snprintf(buffer, buflen, "Nexthop Group Added %s",
 			 pbre->name);
 		break;
-	case PBR_NHG_MODIFY:
-		snprintf(buffer, buflen, "Nexthop Group Modified %s",
+	case PBR_NHG_ADD_NEXTHOP:
+		snprintf(buffer, buflen, "Nexthop Group Nexthop Added %s",
+			 pbre->name);
+		break;
+	case PBR_NHG_DEL_NEXTHOP:
+		snprintf(buffer, buflen, "Nexthop Group Nexthop Deleted %s",
 			 pbre->name);
 		break;
 	case PBR_NHG_DELETE:
@@ -60,6 +67,18 @@ static const char *pbr_event_wqentry2str(struct pbr_event *pbre,
 		break;
 	case PBR_NH_CHANGED:
 		snprintf(buffer, buflen, "Nexthop Call back from Zebra");
+		break;
+	case PBR_MAP_INSTALL:
+		snprintf(buffer, buflen, "PBR_MAP %s Installing into zapi",
+			 pbre->name);
+		break;
+	case PBR_POLICY_CHANGED:
+		snprintf(buffer, buflen,
+			 "PBR-Policy %s applied to an interface", pbre->name);
+		break;
+	case PBR_MAP_POLICY_INSTALL:
+		snprintf(buffer, buflen, "PBR-POLICY installation time for %s",
+			 pbre->name);
 		break;
 	}
 
@@ -83,11 +102,21 @@ static wq_item_status pbr_event_process_wq(struct work_queue *wq, void *data)
 		   pbr_event_wqentry2str(pbre, buffer, sizeof(buffer)));
 
 	switch (pbre->event) {
-	case PBR_NHG_ADD:
+	case PBR_NHG_NEW:
+		pbr_nht_add_group(pbre->name);
+		pbr_map_check_nh_group_change(pbre->name);
 		break;
-	case PBR_NHG_MODIFY:
+	case PBR_NHG_ADD_NEXTHOP:
+		pbr_nht_change_group(pbre->name);
+		pbr_map_check_nh_group_change(pbre->name);
+		break;
+	case PBR_NHG_DEL_NEXTHOP:
+		pbr_nht_change_group(pbre->name);
+		pbr_map_check_nh_group_change(pbre->name);
 		break;
 	case PBR_NHG_DELETE:
+		pbr_nht_delete_group(pbre->name);
+		pbr_map_check_nh_group_change(pbre->name);
 		break;
 	case PBR_MAP_ADD:
 		break;
@@ -96,6 +125,14 @@ static wq_item_status pbr_event_process_wq(struct work_queue *wq, void *data)
 	case PBR_MAP_DELETE:
 		break;
 	case PBR_NH_CHANGED:
+		break;
+	case PBR_MAP_INSTALL:
+		break;
+	case PBR_POLICY_CHANGED:
+		pbr_map_check_policy_change(pbre->name);
+		break;
+	case PBR_MAP_POLICY_INSTALL:
+		pbr_map_policy_install(pbre->name);
 		break;
 	}
 
