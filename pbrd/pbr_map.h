@@ -47,6 +47,11 @@ struct pbr_map {
 	 * what we think is the invalid reason
 	 */
 	bool valid;
+
+	/*
+	 * Is this actually installed?
+	 */
+	bool installed;
 };
 
 RB_HEAD(pbr_map_entry_head, pbr_map);
@@ -71,6 +76,7 @@ struct pbr_map_sequence {
 	 */
 	struct nexthop *nhop;
 	char *nhgrp_name;
+	bool nhs_installed;
 
 	/*
 	 * A reason of 0 means we think the pbr_map_sequence is good to go
@@ -99,4 +105,11 @@ extern void pbr_map_write_interfaces(struct vty *vty, struct interface *ifp);
 extern void pbr_map_init(void);
 
 extern bool pbr_map_check_valid(const char *name);
+
+extern void pbr_map_check_nh_group_change(const char *nh_group);
+extern void pbr_map_check_policy_change(const char *name);
+
+extern void pbr_map_schedule_policy_from_nhg(const char *nh_group);
+
+extern void pbr_map_policy_install(const char *name);
 #endif

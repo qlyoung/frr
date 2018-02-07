@@ -45,9 +45,9 @@
 #include "nexthop.h"
 #include "nexthop_group.h"
 
+#include "pbr_nht.h"
 #include "pbr_zebra.h"
 #include "pbr_map.h"
-#include "pbr_nht.h"
 #include "pbr_event.h"
 #include "pbr_vty.h"
 
@@ -149,10 +149,12 @@ int main(int argc, char **argv, char **envp)
 
 	vrf_init(NULL, NULL, NULL, NULL);
 	nexthop_group_init(pbr_nhgroup_add_cb,
-			   pbr_nhgroup_modify_cb,
+			   pbr_nhgroup_add_nexthop_cb,
+			   pbr_nhgroup_del_nexthop_cb,
 			   pbr_nhgroup_delete_cb);
 
 	pbr_event_init();
+	pbr_nht_init();
 	pbr_map_init();
 	pbr_zebra_init();
 	pbr_vty_init();

@@ -22,11 +22,64 @@
 #ifndef __PBR_NHT_H__
 #define __PBR_NHT_H__
 
+struct pbr_nexthop_cache {
+	struct nexthop nexthop;
+
+	bool valid;
+};
+
+struct pbr_nexthop_group_cache {
+	char name[100];
+
+	uint32_t table_id;
+
+	struct list *pbrnhcache;
+
+	/*
+	 * If all nexthops are considered valid
+	 */
+	bool valid;
+};
+
+extern void pbr_nht_write_table_range(struct vty *vty);
+#define PBR_NHT_DEFAULT_LOW_TABLEID 5000
+#define PBR_NHT_DEFAULT_HIGH_TABLEID 6000
+extern void pbr_nht_set_tableid_range(uint32_t low, uint32_t high);
+
+/*
+ * Get the next tableid to use for installation
+ */
+extern uint32_t pbr_nht_get_next_tableid(void);
+/*
+ * Get the next rule number to use for installation
+ */
+extern void pbr_nht_write_rule_range(struct vty *vty);
+
+#define PBR_NHT_DEFAULT_LOW_RULE 5000
+#define PBR_NHT_DEFAULT_HIGH_RULE 6000
+extern void pbr_nht_set_rule_range(uint32_t low, uint32_t high);
+
+extern uint32_t pbr_nht_get_next_rule(void);
+
 extern void pbr_nhgroup_add_cb(const char *name);
-extern void pbr_nhgroup_modify_cb(const char *name);
+extern void pbr_nhgroup_add_nexthop_cb(const char *name);
+extern void pbr_nhgroup_del_nexthop_cb(const char *name);
 extern void pbr_nhgroup_delete_cb(const char *name);
 
 extern bool pbr_nht_nexthop_valid(struct nexthop *nhop);
 extern bool pbr_nht_nexthop_group_valid(const char *name);
 
+extern void pbr_nht_add_group(const char *name);
+extern void pbr_nht_change_group(const char *name);
+extern void pbr_nht_delete_group(const char *name);
+
+/*
+ * Given the tableid of the installed default
+ * route, find the nexthop-group associated with
+ * it, then find all pbr-maps that use it and
+ * install them as well.
+ */
+extern void pbr_nht_route_installed_for_table(uint32_t table_id);
+
+extern void pbr_nht_init(void);
 #endif
