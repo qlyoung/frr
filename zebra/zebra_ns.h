@@ -42,9 +42,10 @@ struct zebra_ns {
 	ns_id_t ns_id;
 
 #ifdef HAVE_NETLINK
-	struct nlsock netlink;     /* kernel messages */
-	struct nlsock netlink_cmd; /* command channel */
-	struct thread *t_netlink;
+	struct nlsock netlink;		/* kernel messages */
+	struct nlsock netlink_cmd;	/* command channel */
+	struct thread *t_netlink;	/* for reading kernel messages */
+	struct thread *t_netlink_cmd;	/* for reading kernel replies to cmds */
 #endif
 
 	struct route_table *if_table;
