@@ -151,7 +151,7 @@ static int route_notify_owner(int command, struct zclient *zclient,
 	case ZAPI_ROUTE_INSTALLED:
 		zlog_debug("%s Route installed succeeded for table: %u",
 			   __PRETTY_FUNCTION__, table_id);
-		// pbr_nht_route_installed_for_table(table_id);
+		pbr_nht_route_installed_for_table(table_id);
 		break;
 	case ZAPI_ROUTE_REMOVED:
 		zlog_debug("%s Route removed for table: %u",
