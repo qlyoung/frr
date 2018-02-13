@@ -109,8 +109,13 @@ static void pbr_nht_find_nhg_from_table(struct hash_backet *b, void *data)
 		(struct pbr_nexthop_group_cache *)b->data;
 	uint32_t *table_id = (uint32_t *)data;
 
-	if (pnhgc->table_id == *table_id)
+	if (pnhgc->table_id == *table_id) {
+		zlog_debug("%s: Tableid(%u) matches %s",
+			   __PRETTY_FUNCTION__,
+			   *table_id, pnhgc->name);
+		pnhgc->installed = true;
 		pbr_map_schedule_policy_from_nhg(pnhgc->name);
+	}
 }
 
 void pbr_nht_route_installed_for_table(uint32_t table_id)
@@ -144,6 +149,9 @@ void pbr_nht_change_group(const char *name)
 		pnhc = hash_get(pbr_nh_hash, nexthop, pbr_nh_alloc);
 		zlog_debug("Found: %p", pnhc);
 	}
+
+	pnhgc->installed = false;
+	route_add(pnhgc, nhgc);
 }
 
 static void *pbr_nhgc_alloc(void *p)
@@ -178,7 +186,7 @@ void pbr_nht_add_group(const char *name)
 
 	strcpy(lookup.name, name);
 	pnhgc = hash_get(pbr_nhg_hash, &lookup, pbr_nhgc_alloc);
-	zlog_debug("pnhgc: %p",pnhgc);
+	zlog_debug("pnhgc: %p", pnhgc);
 	for (ALL_NEXTHOPS(nhgc->nhg, nhop)) {
 		struct pbr_nexthop_cache lookup;
 		struct pbr_nexthop_cache *pnhc;
