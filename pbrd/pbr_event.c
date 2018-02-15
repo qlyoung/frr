@@ -119,14 +119,17 @@ static wq_item_status pbr_event_process_wq(struct work_queue *wq, void *data)
 		pbr_map_check_nh_group_change(pbre->name);
 		break;
 	case PBR_MAP_ADD:
+		pbr_map_add_interfaces(pbre->name);
 		break;
 	case PBR_MAP_MODIFY:
+		pbr_map_check(pbre->name, pbre->seqno);
 		break;
 	case PBR_MAP_DELETE:
 		break;
 	case PBR_NH_CHANGED:
 		break;
 	case PBR_MAP_INSTALL:
+		pbr_map_install(pbre->name);
 		break;
 	case PBR_POLICY_CHANGED:
 		pbr_map_check_policy_change(pbre->name);

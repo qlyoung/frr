@@ -44,8 +44,8 @@ struct pbr_nexthop_group_cache {
 };
 
 extern void pbr_nht_write_table_range(struct vty *vty);
-#define PBR_NHT_DEFAULT_LOW_TABLEID 5000
-#define PBR_NHT_DEFAULT_HIGH_TABLEID 6000
+#define PBR_NHT_DEFAULT_LOW_TABLEID 10000
+#define PBR_NHT_DEFAULT_HIGH_TABLEID 11000
 extern void pbr_nht_set_tableid_range(uint32_t low, uint32_t high);
 
 /*
@@ -57,11 +57,11 @@ extern uint32_t pbr_nht_get_next_tableid(void);
  */
 extern void pbr_nht_write_rule_range(struct vty *vty);
 
-#define PBR_NHT_DEFAULT_LOW_RULE 5000
-#define PBR_NHT_DEFAULT_HIGH_RULE 6000
+#define PBR_NHT_DEFAULT_LOW_RULE 300
+#define PBR_NHT_DEFAULT_HIGH_RULE 1300
 extern void pbr_nht_set_rule_range(uint32_t low, uint32_t high);
 
-extern uint32_t pbr_nht_get_next_rule(void);
+extern uint32_t pbr_nht_get_next_rule(uint32_t seqno);
 
 extern void pbr_nhgroup_add_cb(const char *name);
 extern void pbr_nhgroup_add_nexthop_cb(const char *name);
@@ -82,6 +82,14 @@ extern void pbr_nht_delete_group(const char *name);
  * install them as well.
  */
 extern void pbr_nht_route_installed_for_table(uint32_t table_id);
+
+/*
+ * Given the nexthop group name, lookup the associated
+ * tableid with it
+ */
+extern uint32_t pbr_nht_get_table(const char *name);
+
+extern bool pbr_nht_get_installed(const char *name);
 
 extern void pbr_nht_init(void);
 #endif

@@ -41,7 +41,6 @@ static uint32_t pbr_nhg_high_table;
 static uint32_t pbr_nhg_low_rule;
 static uint32_t pbr_nhg_high_rule;
 static bool nhg_tableid[65535];
-static bool nhg_rule[65535];
 static void *pbr_nh_alloc(void *p);
 
 void pbr_nhgroup_add_cb(const char *name)
@@ -186,7 +185,8 @@ void pbr_nht_add_group(const char *name)
 
 	strcpy(lookup.name, name);
 	pnhgc = hash_get(pbr_nhg_hash, &lookup, pbr_nhgc_alloc);
-	zlog_debug("pnhgc: %p", pnhgc);
+	zlog_debug("Retrieved %p", pnhgc);
+
 	for (ALL_NEXTHOPS(nhgc->nhg, nhop)) {
 		struct pbr_nexthop_cache lookup;
 		struct pbr_nexthop_cache *pnhc;
@@ -330,23 +330,9 @@ void pbr_nht_write_table_range(struct vty *vty)
 	}
 }
 
-uint32_t pbr_nht_get_next_rule(void)
+uint32_t pbr_nht_get_next_rule(uint32_t seqno)
 {
-	uint32_t i;
-	bool found = false;
-
-	for (i = pbr_nhg_low_rule; i <= pbr_nhg_high_rule; i++) {
-		if (nhg_rule[i] == false) {
-			found = true;
-			break;
-		}
-	}
-
-	if (found) {
-		nhg_rule[i] = true;
-		return i;
-	} else
-		return 0;
+	return seqno + pbr_nhg_low_rule - 1;
 }
 void pbr_nht_set_rule_range(uint32_t low, uint32_t high)
 {
@@ -363,6 +349,40 @@ void pbr_nht_write_rule_range(struct vty *vty)
 	}
 }
 
+uint32_t pbr_nht_get_table(const char *name)
+{
+	struct pbr_nexthop_group_cache find;
+	struct pbr_nexthop_group_cache *pnhgc;
+
+	memset(&find, 0, sizeof(find));
+	strcpy(find.name, name);
+	pnhgc = hash_lookup(pbr_nhg_hash, &find);
+
+	if (!pnhgc) {
+		zlog_debug("%s: Something has gone terribly wrong for %s",
+			   __PRETTY_FUNCTION__, name);
+		return 5000;
+	}
+
+	return pnhgc->table_id;
+}
+
+bool pbr_nht_get_installed(const char *name)
+{
+	struct pbr_nexthop_group_cache find;
+	struct pbr_nexthop_group_cache *pnhgc;
+
+	memset(&find, 0, sizeof(find));
+	strcpy(find.name, name);
+
+	pnhgc = hash_lookup(pbr_nhg_hash, &find);
+
+	if (!pnhgc) {
+		return false;
+	}
+
+	return pnhgc->installed;
+}
 
 void pbr_nht_init(void)
 {
