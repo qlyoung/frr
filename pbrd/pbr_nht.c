@@ -186,7 +186,8 @@ void pbr_nht_add_group(const char *name)
 
 	strcpy(lookup.name, name);
 	pnhgc = hash_get(pbr_nhg_hash, &lookup, pbr_nhgc_alloc);
-	zlog_debug("pnhgc: %p", pnhgc);
+	zlog_debug("Retrieved %p", pnhgc);
+
 	for (ALL_NEXTHOPS(nhgc->nhg, nhop)) {
 		struct pbr_nexthop_cache lookup;
 		struct pbr_nexthop_cache *pnhc;
@@ -363,6 +364,40 @@ void pbr_nht_write_rule_range(struct vty *vty)
 	}
 }
 
+uint32_t pbr_nht_get_table(const char *name)
+{
+	struct pbr_nexthop_group_cache find;
+	struct pbr_nexthop_group_cache *pnhgc;
+
+	memset(&find, 0, sizeof(find));
+	strcpy(find.name, name);
+	pnhgc = hash_lookup(pbr_nhg_hash, &find);
+
+	if (!pnhgc) {
+		zlog_debug("%s: Something has gone terribly wrong for %s",
+			   __PRETTY_FUNCTION__, name);
+		return 5000;
+	}
+
+	return pnhgc->table_id;
+}
+
+bool pbr_nht_get_installed(const char *name)
+{
+	struct pbr_nexthop_group_cache find;
+	struct pbr_nexthop_group_cache *pnhgc;
+
+	memset(&find, 0, sizeof(find));
+	strcpy(find.name, name);
+
+	pnhgc = hash_lookup(pbr_nhg_hash, &find);
+
+	if (!pnhgc) {
+		return false;
+	}
+
+	return pnhgc->installed;
+}
 
 void pbr_nht_init(void)
 {

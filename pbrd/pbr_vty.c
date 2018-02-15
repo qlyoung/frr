@@ -31,8 +31,8 @@
 #include "json.h"
 
 #include "pbrd/pbr_nht.h"
-#include "pbrd/pbr_zebra.h"
 #include "pbrd/pbr_map.h"
+#include "pbrd/pbr_zebra.h"
 #include "pbrd/pbr_vty.h"
 #include "pbrd/pbr_event.h"
 #ifndef VTYSH_EXTRACT_PL
@@ -57,21 +57,25 @@ DEFUN_NOSH (pbr_map,
 	return CMD_SUCCESS;
 }
 
-DEFPY (pbr_map_match_src,
-       pbr_map_match_src_cmd,
-       "match src-ip <A.B.C.D/M|X:X::X:X/M>$prefix",
-       "Match the rest of the command\n"
-       "Choose the src ip or ipv6 prefix to use\n"
-       "v4 Prefix\n"
-       "v6 Prefix\n")
+DEFPY(pbr_map_match_src, pbr_map_match_src_cmd,
+	"[no] match src-ip <A.B.C.D/M|X:X::X:X/M>$prefix",
+	NO_STR
+	"Match the rest of the command\n"
+	"Choose the src ip or ipv6 prefix to use\n"
+	"v4 Prefix\n"
+	"v6 Prefix\n")
 {
 	struct pbr_map_sequence *pbrms = VTY_GET_CONTEXT(pbr_map_sequence);
 	struct pbr_event *pbre;
 
-	if (!pbrms->src)
-		pbrms->src = prefix_new();
-
-	prefix_copy(pbrms->src, prefix);
+	if (!no) {
+		if (!pbrms->src)
+			pbrms->src = prefix_new();
+		prefix_copy(pbrms->src, prefix);
+	} else {
+		prefix_free(pbrms->src);
+		pbrms->src = 0;
+	}
 
 	pbre = pbr_event_new();
 	pbre->event = PBR_MAP_MODIFY;
@@ -81,21 +85,25 @@ DEFPY (pbr_map_match_src,
 	return CMD_SUCCESS;
 }
 
-DEFPY (pbr_map_match_dst,
-       pbr_map_match_dst_cmd,
-       "match dst-ip <A.B.C.D/M|X:X::X:X/M>$prefix",
-       "Match the rest of the command\n"
-       "Choose the src ip or ipv6 prefix to use\n"
-       "v4 Prefix\n"
-       "v6 Prefix\n")
+DEFPY(pbr_map_match_dst, pbr_map_match_dst_cmd,
+	"[no] match dst-ip <A.B.C.D/M|X:X::X:X/M>$prefix",
+	NO_STR
+	"Match the rest of the command\n"
+	"Choose the src ip or ipv6 prefix to use\n"
+	"v4 Prefix\n"
+	"v6 Prefix\n")
 {
 	struct pbr_map_sequence *pbrms = VTY_GET_CONTEXT(pbr_map_sequence);
 	struct pbr_event *pbre;
 
-	if (!pbrms->dst)
-		pbrms->dst = prefix_new();
-
-	prefix_copy(pbrms->dst, prefix);
+	if (!no) {
+		if (!pbrms->dst)
+			pbrms->dst = prefix_new();
+		prefix_copy(pbrms->dst, prefix);
+	} else {
+		prefix_free(pbrms->dst);
+		pbrms->dst = 0;
+	}
 
 	pbre = pbr_event_new();
 	pbre->event = PBR_MAP_MODIFY;
@@ -105,12 +113,12 @@ DEFPY (pbr_map_match_dst,
 	return CMD_SUCCESS;
 }
 
-DEFPY (pbr_map_nexthop_group,
-       pbr_map_nexthop_group_cmd,
-       "set nexthop-group NAME$name",
-       "Set for the PBR-MAP\n"
-       "nexthop-group to use\n"
-       "The name of the nexthop-group\n")
+DEFPY(pbr_map_nexthop_group, pbr_map_nexthop_group_cmd,
+	"[no] set nexthop-group NAME$name",
+	NO_STR
+	"Set for the PBR-MAP\n"
+	"nexthop-group to use\n"
+	"The name of the nexthop-group\n")
 {
 	struct pbr_map_sequence *pbrms = VTY_GET_CONTEXT(pbr_map_sequence);
 	struct nexthop_group_cmd *nhgc;
@@ -126,7 +134,8 @@ DEFPY (pbr_map_nexthop_group,
 	if (pbrms->nhgrp_name)
 		XFREE(MTYPE_TMP, pbrms->nhgrp_name);
 
-	pbrms->nhgrp_name = XSTRDUP(MTYPE_TMP, name);
+	if (!no)
+		pbrms->nhgrp_name = XSTRDUP(MTYPE_TMP, name);
 
 	pbre = pbr_event_new();
 	pbre->event = PBR_MAP_MODIFY;
@@ -175,25 +184,42 @@ DEFPY (pbr_rule_range,
 }
 
 DEFPY (pbr_policy,
-       pbr_policy_cmd,
-       "pbr-policy NAME$mapname",
-       "Policy to use\n"
-       "Name of the pbr-map to apply\n")
+	pbr_policy_cmd,
+	"[no] pbr-policy NAME$mapname",
+	NO_STR
+	"Policy to use\n"
+	"Name of the pbr-map to apply\n")
 {
 	VTY_DECLVAR_CONTEXT(interface, ifp);
-	struct pbr_map *pbrm;
+	struct pbr_map *pbrm, *old_pbrm;
+	struct pbr_interface *pbr_ifp = ifp->info;
 
-	/*
-	 * In the future we would probably want to
-	 * allow pre-creation of the pbr-map
-	 * here.  But for getting something
-	 * up and running let's not do that yet.
-	 */
 	pbrm = pbrm_find(mapname);
-	if (!pbrm)
-		return CMD_WARNING_CONFIG_FAILED;
 
-	pbr_map_add_interface(pbrm, ifp);
+	if (no) {
+		if (strcmp(pbr_ifp->mapname, mapname) == 0) {
+			strcpy(pbr_ifp->mapname, "");
+
+			if (pbrm)
+				pbr_map_interface_delete(pbrm, ifp);
+		}
+	} else {
+		if (strcmp(pbr_ifp->mapname, "") == 0) {
+			strcpy(pbr_ifp->mapname, mapname);
+
+			if (pbrm)
+				pbr_map_add_interface(pbrm, ifp);
+		} else {
+			if (!(strcmp(pbr_ifp->mapname, mapname) == 0)) {
+				old_pbrm = pbrm_find(pbr_ifp->mapname);
+				if (old_pbrm)
+					pbr_map_interface_delete(old_pbrm, ifp);
+				strcpy(pbr_ifp->mapname, mapname);
+				if (pbrm)
+					pbr_map_add_interface(pbrm, ifp);
+			}
+		}
+	}
 
 	return CMD_SUCCESS;
 }
@@ -221,12 +247,46 @@ DEFPY (show_pbr_map,
 	"Detailed information\n"
 	JSON_STR)
 {
-        struct pbr_map *pbrm;
+	struct pbr_map_sequence *pbrms;
+	struct pbr_map *pbrm;
+	struct listnode *node;
+	char buf[PREFIX_STRLEN];
 
-        RB_FOREACH (pbrm, pbr_map_entry_head, &pbr_maps)
-		if (!name || (strcmp(name, pbrm->name) == 0))
-			vty_out(vty, "  pbr-map %s\n", pbrm->name);
+	RB_FOREACH (pbrm, pbr_map_entry_head, &pbr_maps) {
+		if (!name || (strcmp(name, pbrm->name) == 0)) {
+			vty_out(vty, "  pbr-map %s valid: %d installed: %d\n",
+				pbrm->name, pbrm->valid, pbrm->installed);
 
+			for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, node,
+						  pbrms)) {
+				vty_out(vty,
+					"    Seq: %u rule: %u Reason: %" PRIu64
+					"\n",
+					pbrms->seqno, pbrms->ruleno,
+					pbrms->reason);
+				if (pbrms->src)
+					vty_out(vty, "\tSRC Match: %s\n",
+						prefix2str(pbrms->src, buf,
+							   sizeof(buf)));
+				if (pbrms->dst)
+					vty_out(vty, "\tDST Match: %s\n",
+						prefix2str(pbrms->dst, buf,
+							   sizeof(buf)));
+
+				if (pbrms->nhgrp_name) {
+					vty_out(vty,
+						"\tNexthop-Group: %s Installed: %u(%d)\n",
+						pbrms->nhgrp_name,
+						pbrms->nhs_installed,
+						pbr_nht_get_installed(
+							pbrms->nhgrp_name));
+				} else {
+					vty_out(vty,
+						"\tNexthop-Group: Unknown\n");
+				}
+			}
+		}
+	}
 	return CMD_SUCCESS;
 }
 
@@ -239,15 +299,28 @@ DEFPY (show_pbr_interface,
 	"PBR Interface Name\n"
 	JSON_STR)
 {
-        struct pbr_map *pbrm;
-        struct listnode *node;
         struct interface *ifp;
+	struct vrf *vrf;
+	struct pbr_interface *pbr_ifp;
 
-        RB_FOREACH (pbrm, pbr_map_entry_head, &pbr_maps) {
-                for (ALL_LIST_ELEMENTS_RO(pbrm->incoming, node, ifp)) {
+	RB_FOREACH(vrf, vrf_name_head, &vrfs_by_name) {
+		FOR_ALL_INTERFACES(vrf, ifp) {
                         if (!name || (strcmp(ifp->name, name) == 0)) {
-                                vty_out(vty, "  %s with pbr-policy %s\n", ifp->name, pbrm->name);
-                                break;
+				pbr_ifp = ifp->info;
+
+				if (!(strcmp(pbr_ifp->mapname, "") == 0)) {
+					struct pbr_map *pbrm;
+
+					pbrm = pbrm_find(pbr_ifp->mapname);
+					vty_out(vty,
+						"  %s(%d) with pbr-policy %s",
+						ifp->name, ifp->ifindex,
+						pbr_ifp->mapname);
+					if (!pbrm)
+						vty_out(vty,
+							" (map doesn't exist)");
+					vty_out(vty, "\n");
+				}
                         }
                 }
         }

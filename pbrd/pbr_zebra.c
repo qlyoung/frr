@@ -37,10 +37,14 @@
 #include "nexthop_group.h"
 
 #include "pbr_nht.h"
+#include "pbr_map.h"
 #include "pbr_zebra.h"
 
 /* Zebra structure to hold current status. */
 struct zclient *zclient = NULL;
+
+DEFINE_MGROUP(PBRD, "pbrd")
+DEFINE_MTYPE(PBRD, PBR_INTERFACE, "PBR interface")
 
 /* For registering threads. */
 extern struct thread_master *master;
@@ -56,6 +60,23 @@ static struct interface *zebra_interface_if_lookup(struct stream *s)
 	return if_lookup_by_name(ifname_tmp, VRF_DEFAULT);
 }
 
+static struct pbr_interface *pbr_if_new(struct interface *ifp)
+{
+	struct pbr_interface *pbr_ifp;
+
+	zassert(ifp);
+	zassert(!ifp->info);
+
+	pbr_ifp = XCALLOC(MTYPE_PBR_INTERFACE, sizeof(*pbr_ifp));
+
+	if (!pbr_ifp) {
+		zlog_err("PBR XCALLOC(%zu) failure", sizeof(*pbr_ifp));
+		return 0;
+	}
+
+	return (pbr_ifp);
+}
+
 /* Inteface addition message from zebra. */
 static int interface_add(int command, struct zclient *zclient,
 			       zebra_size_t length, vrf_id_t vrf_id)
@@ -64,11 +85,20 @@ static int interface_add(int command, struct zclient *zclient,
 
 	ifp = zebra_interface_add_read(zclient->ibuf, vrf_id);
 
-	if (!ifp->info)
+	if (!ifp)
 		return 0;
+
+	if (!ifp->info) {
+		struct pbr_interface *pbr_ifp;
+
+		pbr_ifp = pbr_if_new(ifp);
+		ifp->info = pbr_ifp;
+	}
 
 	return 0;
 }
+
+
 
 static int interface_delete(int command, struct zclient *zclient,
 			    zebra_size_t length, vrf_id_t vrf_id)
@@ -313,4 +343,63 @@ void pbr_send_rnh(struct nexthop *nhop, bool reg)
 		zlog_warn("%s: Failure to send nexthop to zebra",
 			  __PRETTY_FUNCTION__);
 	}
+}
+
+static void pbr_encode_pbr_map_sequence_prefix(struct stream *s,
+					       struct prefix *p)
+{
+	struct prefix any;
+
+	if (!p) {
+		memset(&any, 0, sizeof(any));
+		any.family = AF_INET;
+		p = &any;
+	}
+
+	stream_putc(s, p->family);
+	stream_putc(s, p->prefixlen);
+	stream_put(s, &p->u.prefix, prefix_blen(p));
+}
+
+static void pbr_encode_pbr_map_sequence(struct stream *s,
+					struct pbr_map_sequence *pbrms,
+					struct interface *ifp)
+{
+	stream_putl(s, pbrms->seqno);
+	stream_putl(s, pbrms->ruleno);
+	pbr_encode_pbr_map_sequence_prefix(s, pbrms->src);
+	stream_putw(s, 0);  /* src port */
+	pbr_encode_pbr_map_sequence_prefix(s, pbrms->dst);
+	stream_putw(s, 0);  /* dst port */
+	stream_putl(s, pbr_nht_get_table(pbrms->nhgrp_name));
+	stream_putl(s, ifp->ifindex);
+}
+
+void pbr_send_pbr_map(struct pbr_map *pbrm)
+{
+	struct listnode *inode, *snode;
+	struct pbr_map_sequence *pbrms;
+	struct interface *ifp;
+	struct stream *s;
+	uint32_t total;
+
+	s = zclient->obuf;
+	stream_reset(s);
+
+	zclient_create_header(s, ZEBRA_RULE_ADD, VRF_DEFAULT);
+
+	total = 0;
+	for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, snode, pbrms))
+		total++;
+
+	stream_putl(s, total);
+	for (ALL_LIST_ELEMENTS_RO(pbrm->incoming, inode, ifp)) {
+		for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, snode, pbrms)) {
+			pbr_encode_pbr_map_sequence(s, pbrms, ifp);
+		}
+	}
+
+	stream_putw_at(s, 0, stream_get_endp(s));
+
+	zclient_send_message(zclient);
 }

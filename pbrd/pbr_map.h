@@ -66,6 +66,11 @@ struct pbr_map_sequence {
 	uint32_t seqno;
 
 	/*
+	 * The rule number to install into
+	 */
+	uint32_t ruleno;
+
+	/*
 	 * Our policy Catchers
 	 */
 	struct prefix *src;
@@ -101,15 +106,23 @@ extern struct pbr_map_sequence *pbrms_get(const char *name, uint32_t seqno);
 extern struct pbr_map *pbrm_find(const char *name);
 
 extern void pbr_map_add_interface(struct pbr_map *pbrm, struct interface *ifp);
+extern void pbr_map_interface_delete(struct pbr_map *pbrm,
+				     struct interface *ifp);
 extern void pbr_map_write_interfaces(struct vty *vty, struct interface *ifp);
 extern void pbr_map_init(void);
 
+extern void pbr_map_check(const char *name);
 extern bool pbr_map_check_valid(const char *name);
 
+extern void pbr_map_check(const char *name);
 extern void pbr_map_check_nh_group_change(const char *nh_group);
 extern void pbr_map_check_policy_change(const char *name);
 
+extern void pbr_map_add_interfaces(const char *name);
+
 extern void pbr_map_schedule_policy_from_nhg(const char *nh_group);
+
+extern void pbr_map_install(const char *name);
 
 extern void pbr_map_policy_install(const char *name);
 #endif
