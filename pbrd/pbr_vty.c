@@ -41,7 +41,7 @@
 
 DEFUN_NOSH (pbr_map,
 	    pbr_map_cmd,
-	    "pbr-map WORD seq (1-65535)",
+	    "pbr-map WORD seq (1-1000)",
 	    "Create pbr-map or enter pbr-map command mode\n"
 	    "The name of the PBR MAP\n"
 	    "Sequence to insert to/delete from existing pbr-map entry\n"
@@ -79,6 +79,7 @@ DEFPY(pbr_map_match_src, pbr_map_match_src_cmd,
 
 	pbre = pbr_event_new();
 	pbre->event = PBR_MAP_MODIFY;
+	pbre->seqno = pbrms->seqno;
 	strlcpy(pbre->name, pbrms->parent->name, sizeof(pbre->name));
 	pbr_event_enqueue(pbre);
 
@@ -107,6 +108,7 @@ DEFPY(pbr_map_match_dst, pbr_map_match_dst_cmd,
 
 	pbre = pbr_event_new();
 	pbre->event = PBR_MAP_MODIFY;
+	pbre->seqno = pbrms->seqno;
 	strlcpy(pbre->name, pbrms->parent->name, sizeof(pbre->name));
 	pbr_event_enqueue(pbre);
 
@@ -139,6 +141,7 @@ DEFPY(pbr_map_nexthop_group, pbr_map_nexthop_group_cmd,
 
 	pbre = pbr_event_new();
 	pbre->event = PBR_MAP_MODIFY;
+	pbre->seqno = pbrms->seqno;
 	strlcpy(pbre->name, pbrms->parent->name, sizeof(pbre->name));
 	pbr_event_enqueue(pbre);
 
@@ -147,7 +150,7 @@ DEFPY(pbr_map_nexthop_group, pbr_map_nexthop_group_cmd,
 
 DEFPY (pbr_table_range,
        pbr_table_range_cmd,
-       "[no]$no pbr table range (5000-65535)$start (6000-65535)$end",
+       "[no]$no pbr table range (10000-65535)$start (11000-65535)$end",
        NO_STR
        "Policy based routing\n"
        "Policy based routing table\n"
@@ -166,7 +169,7 @@ DEFPY (pbr_table_range,
 
 DEFPY (pbr_rule_range,
 	pbr_rule_range_cmd,
-	"[no] pbr rule range (5000-65535)$start (6000-65535)$end",
+	"[no] pbr rule range (300-1300)$start (400-1400)$end",
 	NO_STR
 	"Policy based routing\n"
 	"Policy based routing rule\n"
@@ -275,14 +278,15 @@ DEFPY (show_pbr_map,
 
 				if (pbrms->nhgrp_name) {
 					vty_out(vty,
-						"\tNexthop-Group: %s Installed: %u(%d)\n",
+						"\tNexthop-Group: %s(%u) Installed: %u(%d)\n",
 						pbrms->nhgrp_name,
+						pbr_nht_get_table(pbrms->nhgrp_name),
 						pbrms->nhs_installed,
 						pbr_nht_get_installed(
 							pbrms->nhgrp_name));
 				} else {
 					vty_out(vty,
-						"\tNexthop-Group: Unknown\n");
+						"\tNexthop-Group: Unknown Installed: 0(0)\n");
 				}
 			}
 		}
