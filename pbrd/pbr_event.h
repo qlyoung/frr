@@ -80,6 +80,12 @@ enum pbr_events {
 	 * Callback for when a policy has been applied to an interface
 	 */
 	PBR_POLICY_CHANGED,
+
+	/*
+	 * Callback for when a interface has been issued a no
+	 * policy command
+	 */
+	PBR_POLICY_DELETED,
 };
 
 struct pbr_event {

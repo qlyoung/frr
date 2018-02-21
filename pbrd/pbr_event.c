@@ -30,6 +30,9 @@
 #include "pbrd/pbr_event.h"
 #include "pbrd/pbr_map.h"
 #include "pbrd/pbr_nht.h"
+#include "pbrd/pbr_memory.h"
+
+DEFINE_MTYPE_STATIC(PBRD, PBR_EVENT, "Event WorkQueue")
 
 struct work_queue *pbr_event_wq;
 
@@ -80,6 +83,10 @@ static const char *pbr_event_wqentry2str(struct pbr_event *pbre,
 		snprintf(buffer, buflen, "PBR-POLICY installation time for %s",
 			 pbre->name);
 		break;
+	case PBR_POLICY_DELETED:
+		snprintf(buffer, buflen, "PBR-POLICY deleted from %s",
+			 pbre->name);
+		break;
 	}
 
 	return buffer;
@@ -89,7 +96,7 @@ static void pbr_event_delete_wq(struct work_queue *wq, void *data)
 {
 	struct pbr_event *pbre = (struct pbr_event *)data;
 
-	XFREE(MTYPE_TMP, pbre);
+	XFREE(MTYPE_PBR_EVENT, pbre);
 }
 
 static wq_item_status pbr_event_process_wq(struct work_queue *wq, void *data)
@@ -125,6 +132,7 @@ static wq_item_status pbr_event_process_wq(struct work_queue *wq, void *data)
 		pbr_map_check(pbre->name, pbre->seqno);
 		break;
 	case PBR_MAP_DELETE:
+		pbr_map_delete(pbre->name, pbre->seqno);
 		break;
 	case PBR_NH_CHANGED:
 		break;
@@ -136,6 +144,9 @@ static wq_item_status pbr_event_process_wq(struct work_queue *wq, void *data)
 		break;
 	case PBR_MAP_POLICY_INSTALL:
 		pbr_map_policy_install(pbre->name);
+		break;
+	case PBR_POLICY_DELETED:
+		pbr_map_policy_delete(pbre->name);
 		break;
 	}
 
@@ -149,7 +160,7 @@ void pbr_event_enqueue(struct pbr_event *pbre)
 
 struct pbr_event *pbr_event_new(void)
 {
-	return XCALLOC(MTYPE_TMP, sizeof(struct pbr_event));
+	return XCALLOC(MTYPE_PBR_EVENT, sizeof(struct pbr_event));
 }
 
 extern struct thread_master *master;
