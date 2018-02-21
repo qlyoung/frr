@@ -32,6 +32,9 @@
 #include "pbrd/pbr_map.h"
 #include "pbrd/pbr_event.h"
 #include "pbrd/pbr_zebra.h"
+#include "pbrd/pbr_memory.h"
+
+DEFINE_MTYPE_STATIC(PBRD, PBR_NHG, "PBR Nexthop Groups")
 
 static struct hash *pbr_nh_hash;
 static struct hash *pbr_nhg_hash;
@@ -129,6 +132,7 @@ void pbr_nht_change_group(const char *name)
 	struct pbr_nexthop_cache *pnhc;
 	struct pbr_nexthop_group_cache *pnhgc;
 	struct pbr_nexthop_group_cache find;
+	afi_t install_afi = AFI_MAX;
 
 	nhgc = nhgc_find(name);
 	if (!nhgc)
@@ -147,10 +151,33 @@ void pbr_nht_change_group(const char *name)
 		zlog_debug("Handling stuff\n");
 		pnhc = hash_get(pbr_nh_hash, nexthop, pbr_nh_alloc);
 		zlog_debug("Found: %p", pnhc);
+
+		switch (nexthop->type) {
+		case NEXTHOP_TYPE_IFINDEX:
+			break;
+		case NEXTHOP_TYPE_IPV4:
+		case NEXTHOP_TYPE_IPV4_IFINDEX:
+			if (install_afi == AFI_IP6)
+				zlog_debug("AFI's are both?");
+			install_afi = AFI_IP;
+			break;
+		case NEXTHOP_TYPE_IPV6:
+		case NEXTHOP_TYPE_IPV6_IFINDEX:
+			if (install_afi == AFI_IP)
+				zlog_debug("AFI's are both?");
+			install_afi = AFI_IP6;
+			break;
+		case NEXTHOP_TYPE_BLACKHOLE:
+			if (install_afi == AFI_IP || install_afi == AFI_IP6)
+				zlog_debug("AFI's are wrong?");
+			install_afi = AFI_MAX;
+			break;
+		}
 	}
 
 	pnhgc->installed = false;
-	route_add(pnhgc, nhgc);
+	pnhgc->valid = true;
+	route_add(pnhgc, nhgc, install_afi);
 }
 
 static void *pbr_nhgc_alloc(void *p)
@@ -159,7 +186,7 @@ static void *pbr_nhgc_alloc(void *p)
 	struct pbr_nexthop_group_cache *pnhgc =
 		(struct pbr_nexthop_group_cache *)p;
 
-	new = XCALLOC(MTYPE_TMP, sizeof(*new));
+	new = XCALLOC(MTYPE_PBR_NHG, sizeof(*new));
 
 	strcpy(new->name, pnhgc->name);
 	new->table_id = pbr_nht_get_next_tableid();
@@ -209,8 +236,20 @@ bool pbr_nht_nexthop_valid(struct nexthop *nhop)
 
 bool pbr_nht_nexthop_group_valid(const char *name)
 {
+	struct pbr_nexthop_group_cache *pnhgc;
+	struct pbr_nexthop_group_cache lookup;
+
 	zlog_debug("%s(%s)", __PRETTY_FUNCTION__, name);
-	return true;
+
+	strcpy(lookup.name, name);
+	pnhgc = hash_get(pbr_nhg_hash, &lookup, NULL);
+	if (!pnhgc)
+		return false;
+	zlog_debug("\t%d %d", pnhgc->valid, pnhgc->installed);
+	if (pnhgc->valid && pnhgc->installed)
+		return true;
+
+	return false;
 }
 
 static void *pbr_nh_alloc(void *p)
@@ -218,7 +257,7 @@ static void *pbr_nh_alloc(void *p)
 	struct pbr_nexthop_cache *new;
 	struct pbr_nexthop_cache *pnhc = (struct pbr_nexthop_cache *)p;
 
-	new = XCALLOC(MTYPE_TMP, sizeof(*new));
+	new = XCALLOC(MTYPE_PBR_NHG, sizeof(*new));
 	memcpy(&new->nexthop, &pnhc->nexthop, sizeof(struct nexthop));
 
 	zlog_debug("Sending nexthop to Zebra");

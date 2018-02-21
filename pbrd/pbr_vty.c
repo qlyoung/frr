@@ -39,13 +39,11 @@
 #include "pbrd/pbr_vty_clippy.c"
 #endif
 
-DEFUN_NOSH (pbr_map,
-	    pbr_map_cmd,
-	    "pbr-map WORD seq (1-1000)",
-	    "Create pbr-map or enter pbr-map command mode\n"
-	    "The name of the PBR MAP\n"
-	    "Sequence to insert to/delete from existing pbr-map entry\n"
-	    "Sequence number\n")
+DEFUN_NOSH(pbr_map, pbr_map_cmd, "pbr-map WORD seq (1-1000)",
+	   "Create pbr-map or enter pbr-map command mode\n"
+	   "The name of the PBR MAP\n"
+	   "Sequence to insert in existing pbr-map entry\n"
+	   "Sequence number\n")
 {
 	const char *pbrm_name = argv[1]->arg;
 	uint32_t seqno = atoi(argv[3]->arg);
@@ -53,6 +51,48 @@ DEFUN_NOSH (pbr_map,
 
 	pbrms = pbrms_get(pbrm_name, seqno);
 	VTY_PUSH_CONTEXT(PBRMAP_NODE, pbrms);
+
+	return CMD_SUCCESS;
+}
+
+DEFUN_NOSH(no_pbr_map, no_pbr_map_cmd, "no pbr-map WORD [seq (1-65535)]",
+	   NO_STR
+	   "Delete pbr-map\n"
+	   "The name of the PBR MAP\n"
+	   "Sequence to delete from existing pbr-map entry\n"
+	   "Sequence number\n")
+{
+	const char *pbrm_name = argv[2]->arg;
+	uint32_t seqno = 0;
+	struct pbr_map *pbrm = pbrm_find(pbrm_name);
+	struct pbr_event *pbre;
+	struct pbr_map_sequence *pbrms;
+	struct listnode *node, *next_node;
+
+	if (argc > 3)
+		seqno = atoi(argv[4]->arg);
+
+	if (!pbrm) {
+		vty_out(vty, "pbr-map %s not found\n", pbrm_name);
+		return CMD_SUCCESS;
+	}
+
+	if (seqno) {
+		pbrms = pbrms_get(pbrm->name, seqno);
+		pbrms->reason |= PBR_MAP_DEL_SEQUENCE_NUMBER;
+	} else {
+		for (ALL_LIST_ELEMENTS(pbrm->seqnumbers, node, next_node,
+				       pbrms)) {
+			if (pbrms)
+				pbrms->reason |= PBR_MAP_DEL_SEQUENCE_NUMBER;
+		}
+	}
+
+	pbre = pbr_event_new();
+	pbre->event = PBR_MAP_DELETE;
+	pbre->seqno = seqno;
+	strlcpy(pbre->name, pbrm_name, sizeof(pbre->name));
+	pbr_event_enqueue(pbre);
 
 	return CMD_SUCCESS;
 }
@@ -254,40 +294,44 @@ DEFPY (show_pbr_map,
 	struct pbr_map *pbrm;
 	struct listnode *node;
 	char buf[PREFIX_STRLEN];
+	char rbuf[64];
 
 	RB_FOREACH (pbrm, pbr_map_entry_head, &pbr_maps) {
-		if (!name || (strcmp(name, pbrm->name) == 0)) {
-			vty_out(vty, "  pbr-map %s valid: %d installed: %d\n",
-				pbrm->name, pbrm->valid, pbrm->installed);
+		if (name && strcmp(name, pbrm->name) != 0)
+			continue;
 
-			for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, node,
-						  pbrms)) {
+		vty_out(vty, "  pbr-map %s valid: %d\n", pbrm->name,
+			pbrm->valid);
+
+		for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, node, pbrms)) {
+			if (pbrms->reason)
+				pbr_map_reason_string(pbrms->reason, rbuf,
+						      sizeof(rbuf));
+			vty_out(vty,
+				"    Seq: %u rule: %u Installed: %d(%u) Reason: %s\n",
+				pbrms->seqno, pbrms->ruleno, pbrms->installed,
+				pbrms->unique, pbrms->reason ? rbuf : "Valid");
+
+			if (pbrms->src)
+				vty_out(vty, "\tSRC Match: %s\n",
+					prefix2str(pbrms->src, buf,
+						   sizeof(buf)));
+			if (pbrms->dst)
+				vty_out(vty, "\tDST Match: %s\n",
+					prefix2str(pbrms->dst, buf,
+						   sizeof(buf)));
+
+			if (pbrms->nhgrp_name) {
 				vty_out(vty,
-					"    Seq: %u rule: %u Reason: %" PRIu64
-					"\n",
-					pbrms->seqno, pbrms->ruleno,
-					pbrms->reason);
-				if (pbrms->src)
-					vty_out(vty, "\tSRC Match: %s\n",
-						prefix2str(pbrms->src, buf,
-							   sizeof(buf)));
-				if (pbrms->dst)
-					vty_out(vty, "\tDST Match: %s\n",
-						prefix2str(pbrms->dst, buf,
-							   sizeof(buf)));
-
-				if (pbrms->nhgrp_name) {
-					vty_out(vty,
-						"\tNexthop-Group: %s(%u) Installed: %u(%d)\n",
-						pbrms->nhgrp_name,
-						pbr_nht_get_table(pbrms->nhgrp_name),
-						pbrms->nhs_installed,
-						pbr_nht_get_installed(
-							pbrms->nhgrp_name));
-				} else {
-					vty_out(vty,
-						"\tNexthop-Group: Unknown Installed: 0(0)\n");
-				}
+					"\tNexthop-Group: %s(%u) Installed: %u(%d)\n",
+					pbrms->nhgrp_name,
+					pbr_nht_get_table(pbrms->nhgrp_name),
+					pbrms->nhs_installed,
+					pbr_nht_get_installed(
+						pbrms->nhgrp_name));
+			} else {
+				vty_out(vty,
+					"\tNexthop-Group: Unknown Installed: 0(0)\n");
 			}
 		}
 	}
@@ -309,25 +353,24 @@ DEFPY (show_pbr_interface,
 
 	RB_FOREACH(vrf, vrf_name_head, &vrfs_by_name) {
 		FOR_ALL_INTERFACES(vrf, ifp) {
-                        if (!name || (strcmp(ifp->name, name) == 0)) {
-				pbr_ifp = ifp->info;
+			struct pbr_map *pbrm;
 
-				if (!(strcmp(pbr_ifp->mapname, "") == 0)) {
-					struct pbr_map *pbrm;
+			if (name && strcmp(ifp->name, name) != 0)
+				continue;
 
-					pbrm = pbrm_find(pbr_ifp->mapname);
-					vty_out(vty,
-						"  %s(%d) with pbr-policy %s",
-						ifp->name, ifp->ifindex,
-						pbr_ifp->mapname);
-					if (!pbrm)
-						vty_out(vty,
-							" (map doesn't exist)");
-					vty_out(vty, "\n");
-				}
-                        }
-                }
-        }
+			pbr_ifp = ifp->info;
+
+			if (strcmp(pbr_ifp->mapname, "") == 0)
+				continue;
+
+			pbrm = pbrm_find(pbr_ifp->mapname);
+			vty_out(vty, "  %s(%d) with pbr-policy %s", ifp->name,
+				ifp->ifindex, pbr_ifp->mapname);
+			if (!pbrm)
+				vty_out(vty, " (map doesn't exist)");
+			vty_out(vty, "\n");
+		}
+	}
 
 	return CMD_SUCCESS;
 }
@@ -416,6 +459,7 @@ void pbr_vty_init(void)
 	install_default(PBRMAP_NODE);
 
 	install_element(CONFIG_NODE, &pbr_map_cmd);
+	install_element(CONFIG_NODE, &no_pbr_map_cmd);
 	install_element(INTERFACE_NODE, &pbr_policy_cmd);
 	install_element(CONFIG_NODE, &pbr_table_range_cmd);
 	install_element(CONFIG_NODE, &pbr_rule_range_cmd);

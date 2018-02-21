@@ -38,13 +38,13 @@
 
 #include "pbr_nht.h"
 #include "pbr_map.h"
+#include "pbr_memory.h"
 #include "pbr_zebra.h"
+
+DEFINE_MTYPE_STATIC(PBRD, PBR_INTERFACE, "PBR Interface")
 
 /* Zebra structure to hold current status. */
 struct zclient *zclient = NULL;
-
-DEFINE_MGROUP(PBRD, "pbrd")
-DEFINE_MTYPE(PBRD, PBR_INTERFACE, "PBR interface")
 
 /* For registering threads. */
 extern struct thread_master *master;
@@ -97,8 +97,6 @@ static int interface_add(int command, struct zclient *zclient,
 
 	return 0;
 }
-
-
 
 static int interface_delete(int command, struct zclient *zclient,
 			    zebra_size_t length, vrf_id_t vrf_id)
@@ -196,39 +194,61 @@ static int route_notify_owner(int command, struct zclient *zclient,
 	return 0;
 }
 
+static int rule_notify_owner(int command, struct zclient *zclient,
+			     zebra_size_t length, vrf_id_t vrf_id)
+{
+	uint32_t seqno, priority, unique;
+	enum zapi_rule_notify_owner note;
+	struct pbr_map_sequence *pbrms;
+	ifindex_t ifi;
+
+	if (!zapi_rule_notify_decode(zclient->ibuf, &seqno, &priority, &unique,
+				     &ifi, &note))
+		return -1;
+
+	pbrms = pbrms_lookup_unique(unique, ifi);
+	if (!pbrms) {
+		zlog_debug("%s: Failure to lookup pbrms based upon %u",
+			   __PRETTY_FUNCTION__, unique);
+		return 0;
+	}
+
+	switch (note) {
+	case ZAPI_RULE_FAIL_INSTALL:
+		zlog_debug("%s: Recieved RULE_FAIL_INSTALL",
+			   __PRETTY_FUNCTION__);
+		pbrms->installed = false;
+		break;
+	case ZAPI_RULE_INSTALLED:
+		pbrms->installed = true;
+		zlog_debug("%s: Recived RULE_INSTALLED", __PRETTY_FUNCTION__);
+		break;
+	case ZAPI_RULE_REMOVED:
+		zlog_debug("%s: Received RULE REMOVED", __PRETTY_FUNCTION__);
+		break;
+	}
+
+	return 0;
+}
+
 static void zebra_connected(struct zclient *zclient)
 {
 	zclient_send_reg_requests(zclient, VRF_DEFAULT);
 }
 
-/*
- * This function assumes a default route is being
- * installed into the appropriate tableid
- */
-void route_add(struct pbr_nexthop_group_cache *pnhgc,
-	       struct nexthop_group_cmd *nhgc)
+static void route_add_helper(struct zapi_route *api,
+			     struct nexthop_group_cmd *nhgc,
+			     uint8_t install_afi)
 {
-	struct zapi_route api;
 	struct zapi_nexthop *api_nh;
 	struct nexthop *nhop;
-	uint32_t i;
+	int i;
 
-	memset(&api, 0, sizeof(api));
+	api->prefix.family = install_afi;
 
-	api.vrf_id = VRF_DEFAULT;
-	api.type = ZEBRA_ROUTE_PBR;
-	api.safi = SAFI_UNICAST;
-	/*
-	 * Sending a default route
-	 */
-	api.prefix.family = AF_INET;
-	api.tableid = pnhgc->table_id;
-	SET_FLAG(api.message, ZAPI_MESSAGE_TABLEID);
-
-	SET_FLAG(api.message, ZAPI_MESSAGE_NEXTHOP);
 	i = 0;
 	for (ALL_NEXTHOPS(nhgc->nhg, nhop)) {
-		api_nh = &api.nexthops[i];
+		api_nh = &api->nexthops[i];
 		api_nh->vrf_id = nhop->vrf_id;
 		api_nh->type = nhop->type;
 		switch (nhop->type) {
@@ -255,16 +275,53 @@ void route_add(struct pbr_nexthop_group_cache *pnhgc,
 		}
 		i++;
 	}
-	api.nexthop_num = i;
+	api->nexthop_num = i;
 
-	zclient_route_send(ZEBRA_ROUTE_ADD, zclient, &api);
+	zclient_route_send(ZEBRA_ROUTE_ADD, zclient, api);
+}
+
+/*
+ * This function assumes a default route is being
+ * installed into the appropriate tableid
+ */
+void route_add(struct pbr_nexthop_group_cache *pnhgc,
+	       struct nexthop_group_cmd *nhgc, afi_t install_afi)
+{
+	struct zapi_route api;
+
+	memset(&api, 0, sizeof(api));
+
+	api.vrf_id = VRF_DEFAULT;
+	api.type = ZEBRA_ROUTE_PBR;
+	api.safi = SAFI_UNICAST;
+	/*
+	 * Sending a default route
+	 */
+	api.tableid = pnhgc->table_id;
+	SET_FLAG(api.message, ZAPI_MESSAGE_TABLEID);
+	SET_FLAG(api.message, ZAPI_MESSAGE_NEXTHOP);
+	switch (install_afi) {
+	case AFI_MAX:
+		route_add_helper(&api, nhgc, AF_INET);
+		route_add_helper(&api, nhgc, AF_INET6);
+		break;
+	case AFI_IP:
+		route_add_helper(&api, nhgc, AF_INET);
+		break;
+	case AFI_IP6:
+		route_add_helper(&api, nhgc, AF_INET6);
+		break;
+	case AFI_L2VPN:
+		zlog_debug("We do not handle L2VPN");
+		break;
+	}
 }
 
 /*
  * This function assumes a default route is being
  * removed from the appropriate tableid
  */
-void route_delete(struct pbr_nexthop_group_cache *pnhgc)
+void route_delete(struct pbr_nexthop_group_cache *pnhgc, afi_t afi)
 {
 	struct zapi_route api;
 
@@ -272,11 +329,29 @@ void route_delete(struct pbr_nexthop_group_cache *pnhgc)
 	api.vrf_id = VRF_DEFAULT;
 	api.type = ZEBRA_ROUTE_PBR;
 	api.safi = SAFI_UNICAST;
-	api.prefix.family = AF_INET;
 
 	api.tableid = pnhgc->table_id;
 	SET_FLAG(api.message, ZAPI_MESSAGE_TABLEID);
-	zclient_route_send(ZEBRA_ROUTE_DELETE, zclient, &api);
+
+	switch (afi) {
+	case AFI_IP:
+		api.prefix.family = AF_INET;
+		zclient_route_send(ZEBRA_ROUTE_DELETE, zclient, &api);
+		break;
+	case AFI_IP6:
+		api.prefix.family = AF_INET6;
+		zclient_route_send(ZEBRA_ROUTE_DELETE, zclient, &api);
+		break;
+	case AFI_MAX:
+		api.prefix.family = AF_INET;
+		zclient_route_send(ZEBRA_ROUTE_DELETE, zclient, &api);
+		api.prefix.family = AF_INET6;
+		zclient_route_send(ZEBRA_ROUTE_DELETE, zclient, &api);
+		break;
+	case AFI_L2VPN:
+		zlog_debug("Unhandled afi");
+		break;
+	}
 
 	return;
 }
@@ -308,6 +383,7 @@ void pbr_zebra_init(void)
 	zclient->interface_address_add = interface_address_add;
 	zclient->interface_address_delete = interface_address_delete;
 	zclient->route_notify_owner = route_notify_owner;
+	zclient->rule_notify_owner = rule_notify_owner;
 	zclient->nexthop_update = pbr_zebra_nexthop_update;
 }
 
@@ -346,13 +422,14 @@ void pbr_send_rnh(struct nexthop *nhop, bool reg)
 }
 
 static void pbr_encode_pbr_map_sequence_prefix(struct stream *s,
-					       struct prefix *p)
+					       struct prefix *p,
+					       u_char family)
 {
 	struct prefix any;
 
 	if (!p) {
 		memset(&any, 0, sizeof(any));
-		any.family = AF_INET;
+		any.family = family;
 		p = &any;
 	}
 
@@ -365,40 +442,75 @@ static void pbr_encode_pbr_map_sequence(struct stream *s,
 					struct pbr_map_sequence *pbrms,
 					struct interface *ifp)
 {
+	u_char family;
+
+	family = AF_INET;
+	if (pbrms->src)
+		family = pbrms->src->family;
+
+	if (pbrms->dst)
+		family = pbrms->dst->family;
+
 	stream_putl(s, pbrms->seqno);
 	stream_putl(s, pbrms->ruleno);
-	pbr_encode_pbr_map_sequence_prefix(s, pbrms->src);
+	stream_putl(s, pbrms->unique);
+	pbr_encode_pbr_map_sequence_prefix(s, pbrms->src, family);
 	stream_putw(s, 0);  /* src port */
-	pbr_encode_pbr_map_sequence_prefix(s, pbrms->dst);
+	pbr_encode_pbr_map_sequence_prefix(s, pbrms->dst, family);
 	stream_putw(s, 0);  /* dst port */
 	stream_putl(s, pbr_nht_get_table(pbrms->nhgrp_name));
 	stream_putl(s, ifp->ifindex);
 }
 
-void pbr_send_pbr_map(struct pbr_map *pbrm)
+void pbr_send_pbr_map(struct pbr_map *pbrm, bool install)
 {
 	struct listnode *inode, *snode;
 	struct pbr_map_sequence *pbrms;
-	struct interface *ifp;
+	struct pbr_map_interface *pmi;
 	struct stream *s;
 	uint32_t total;
+	ssize_t tspot;
 
+	zlog_debug("%s: for %s %d", __PRETTY_FUNCTION__,
+			pbrm->name, install);
 	s = zclient->obuf;
 	stream_reset(s);
 
-	zclient_create_header(s, ZEBRA_RULE_ADD, VRF_DEFAULT);
+	zclient_create_header(s,
+			      install ? ZEBRA_RULE_ADD : ZEBRA_RULE_DELETE,
+			      VRF_DEFAULT);
 
 	total = 0;
-	for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, snode, pbrms))
-		total++;
+	tspot = stream_get_endp(s);
+	stream_putl(s, 0);
+	for (ALL_LIST_ELEMENTS_RO(pbrm->incoming, inode, pmi)) {
+		zlog_debug("\tInstalling %s %d %s",
+			   pbrm->name, install, pmi->ifp->name);
+		if (!install && pmi->delete) {
+			for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, snode,
+						  pbrms)) {
+				pbr_encode_pbr_map_sequence(s,
+							    pbrms, pmi->ifp);
+				total++;
+			}
+			continue;
+		}
 
-	stream_putl(s, total);
-	for (ALL_LIST_ELEMENTS_RO(pbrm->incoming, inode, ifp)) {
 		for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, snode, pbrms)) {
-			pbr_encode_pbr_map_sequence(s, pbrms, ifp);
+			zlog_debug("\tSeqno: %u %ld",
+				   pbrms->seqno, pbrms->reason);
+			if (!install &&
+			    !(pbrms->reason & PBR_MAP_DEL_SEQUENCE_NUMBER))
+				continue;
+
+			zlog_debug("\t Seq: %u", pbrms->seqno);
+			pbr_encode_pbr_map_sequence(s, pbrms, pmi->ifp);
+			total++;
 		}
 	}
 
+	zlog_debug("Putting %u at %zu whta the fuck", total, tspot);
+	stream_putl_at(s, tspot, total);
 	stream_putw_at(s, 0, stream_get_endp(s));
 
 	zclient_send_message(zclient);

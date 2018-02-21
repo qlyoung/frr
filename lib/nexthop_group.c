@@ -188,7 +188,7 @@ DEFUN_NOSH(nexthop_group, nexthop_group_cmd, "nexthop-group NAME",
 
 DEFUN_NOSH(no_nexthop_group, no_nexthop_group_cmd, "no nexthop-group NAME",
 	   NO_STR
-	   "Enter into the nexthop-group submode\n"
+	   "Delete the nexthop-group\n"
 	   "Specify the NAME of the nexthop-group\n")
 {
 	const char *nhg_name = argv[2]->arg;
@@ -261,8 +261,9 @@ DEFPY(ecmp_nexthops,
 			nhop.type = NEXTHOP_TYPE_IPV6;
 	}
 
+	nh = nexthop_exists(&nhgc->nhg, &nhop);
+
 	if (no) {
-		nh = nexthop_exists(&nhgc->nhg, &nhop);
 		if (nh) {
 			nexthop_del(&nhgc->nhg, nh);
 			nexthop_free(nh);
@@ -270,8 +271,7 @@ DEFPY(ecmp_nexthops,
 			if (nhg_hooks.del_nexthop)
 				nhg_hooks.del_nexthop(nhgc->name);
 		}
-	}
-	else {
+	} else if (!nh) {
 		/* must be adding new nexthop since !no and !nexthop_exists */
 		nh = nexthop_new();
 
@@ -295,6 +295,7 @@ static int nexthop_group_write(struct vty *vty)
 {
 	struct nexthop_group_cmd *nhgc;
 	struct nexthop *nh;
+	struct vrf *vrf;
 
 	RB_FOREACH (nhgc, nhgc_entry_head, &nhgc_entries) {
 		char buf[100];
@@ -302,37 +303,44 @@ static int nexthop_group_write(struct vty *vty)
 		vty_out(vty, "nexthop-group %s\n", nhgc->name);
 
 		for (nh = nhgc->nhg.nexthop ; nh ; nh = nh->next) {
+
 			vty_out(vty, "  nexthop ");
+
 			switch (nh->type) {
 			case NEXTHOP_TYPE_IFINDEX:
-				vty_out(vty, "%s\n",
+				vty_out(vty, "%s",
 					ifindex2ifname(nh->ifindex,
 						       nh->vrf_id));
 				break;
 			case NEXTHOP_TYPE_IPV4:
-				vty_out(vty, "%s\n", inet_ntoa(nh->gate.ipv4));
+				vty_out(vty, "%s", inet_ntoa(nh->gate.ipv4));
 				break;
 			case NEXTHOP_TYPE_IPV4_IFINDEX:
-				vty_out(vty, "%s %s\n",
-					inet_ntoa(nh->gate.ipv4),
+				vty_out(vty, "%s %s", inet_ntoa(nh->gate.ipv4),
 					ifindex2ifname(nh->ifindex,
 						       nh->vrf_id));
 				break;
 			case NEXTHOP_TYPE_IPV6:
-				vty_out(vty, "%s\n",
-					inet_ntop(AF_INET6, &nh->gate.ipv6,
-						  buf, sizeof buf));
+				vty_out(vty, "%s",
+					inet_ntop(AF_INET6, &nh->gate.ipv6, buf,
+						  sizeof(buf)));
 				break;
 			case NEXTHOP_TYPE_IPV6_IFINDEX:
-				vty_out(vty, "%s %s\n",
-					inet_ntop(AF_INET6, &nh->gate.ipv6,
-						  buf, sizeof buf),
+				vty_out(vty, "%s %s",
+					inet_ntop(AF_INET6, &nh->gate.ipv6, buf,
+						  sizeof(buf)),
 					ifindex2ifname(nh->ifindex,
 						       nh->vrf_id));
 				break;
 			case NEXTHOP_TYPE_BLACKHOLE:
 				break;
 			}
+
+			if (nh->vrf_id) {
+				vrf = vrf_lookup_by_id(nh->vrf_id);
+				vty_out(vty, " nexthop-vrf %s", vrf->name);
+			}
+			vty_out(vty, "\n");
 		}
 		vty_out(vty, "!\n");
 	}

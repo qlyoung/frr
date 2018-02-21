@@ -48,17 +48,27 @@ struct pbr_map {
 	 */
 	bool valid;
 
-	/*
-	 * Is this actually installed?
-	 */
 	bool installed;
 };
 
 RB_HEAD(pbr_map_entry_head, pbr_map);
 RB_PROTOTYPE(pbr_map_entry_head, pbr_map, pbr_map_entry, pbr_map_compare)
 
+struct pbr_map_interface {
+	struct interface *ifp;
+
+	struct pbr_map *pbrm;
+
+	bool delete;
+};
+
 struct pbr_map_sequence {
 	struct pbr_map *parent;
+
+	/*
+	 * The Unique identifier of this specific pbrms
+	 */
+	uint32_t unique;
 
 	/*
 	 * The sequence of where we are for display
@@ -83,6 +93,7 @@ struct pbr_map_sequence {
 	char *nhgrp_name;
 	bool nhs_installed;
 
+	bool installed;
 	/*
 	 * A reason of 0 means we think the pbr_map_sequence is good to go
 	 * We can accumuluate multiple failure states
@@ -93,6 +104,7 @@ struct pbr_map_sequence {
 #define PBR_MAP_INVALID_NO_NEXTHOPS    (1 << 2)
 #define PBR_MAP_INVALID_BOTH_NHANDGRP  (1 << 3)
 #define PBR_MAP_INVALID_SRCDST         (1 << 4)
+#define PBR_MAP_DEL_SEQUENCE_NUMBER    (1 << 5)
 	uint64_t reason;
 
 	QOBJ_FIELDS
@@ -103,9 +115,11 @@ DECLARE_QOBJ_TYPE(pbr_map_sequence)
 extern struct pbr_map_entry_head pbr_maps;
 
 extern struct pbr_map_sequence *pbrms_get(const char *name, uint32_t seqno);
+extern struct pbr_map_sequence *pbrms_lookup_unique(uint32_t unique,
+						    ifindex_t ifindex);
 
 extern struct pbr_map *pbrm_find(const char *name);
-
+extern void pbr_map_delete(const char *name, uint32_t seqno);
 extern void pbr_map_add_interface(struct pbr_map *pbrm, struct interface *ifp);
 extern void pbr_map_interface_delete(struct pbr_map *pbrm,
 				     struct interface *ifp);
@@ -117,7 +131,7 @@ extern bool pbr_map_check_valid(const char *name);
 extern void pbr_map_check(const char *name, uint32_t seqno);
 extern void pbr_map_check_nh_group_change(const char *nh_group);
 extern void pbr_map_check_policy_change(const char *name);
-
+extern void pbr_map_reason_string(unsigned int reason, char *buf, int size);
 extern void pbr_map_add_interfaces(const char *name);
 
 extern void pbr_map_schedule_policy_from_nhg(const char *nh_group);
@@ -125,4 +139,5 @@ extern void pbr_map_schedule_policy_from_nhg(const char *nh_group);
 extern void pbr_map_install(const char *name);
 
 extern void pbr_map_policy_install(const char *name);
+extern void pbr_map_policy_delete(const char *ifname);
 #endif

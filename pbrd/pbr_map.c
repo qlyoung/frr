@@ -36,6 +36,13 @@
 #include "pbr_map.h"
 #include "pbr_event.h"
 #include "pbr_zebra.h"
+#include "pbr_memory.h"
+
+DEFINE_MTYPE_STATIC(PBRD, PBR_MAP, "PBR Map")
+DEFINE_MTYPE_STATIC(PBRD, PBR_MAP_SEQNO, "PBR Map Sequence")
+DEFINE_MTYPE_STATIC(PBRD, PBR_MAP_INTERFACE, "PBR Map Interface")
+
+static uint32_t pbr_map_sequence_unique;
 
 static __inline int pbr_map_compare(const struct pbr_map *pbrmap1,
 				    const struct pbr_map *pbrmap2);
@@ -66,33 +73,61 @@ static int pbr_map_sequence_compare(const struct pbr_map_sequence *pbrms1,
 
 static void pbr_map_sequence_delete(struct pbr_map_sequence *pbrms)
 {
-	XFREE(MTYPE_TMP, pbrms);
+	XFREE(MTYPE_PBR_MAP_SEQNO, pbrms);
 }
 
-static int pbr_map_interface_compare(const struct interface *ifp1,
-				     const struct interface *ifp2)
+static int pbr_map_interface_compare(const struct pbr_map_interface *pmi1,
+				     const struct pbr_map_interface *pmi2)
 {
-	return strcmp(ifp1->name, ifp2->name);
+	return strcmp(pmi1->ifp->name, pmi2->ifp->name);
 }
+
+static void pbr_map_interface_list_delete(const struct pbr_map_interface *pmi)
+{
+	pbr_map_policy_delete(pmi->ifp->name);
+}
+
+static const char *pbr_map_reason_str[] = {
+	"Invalid NH-group",     "Invalid NH",	 "No Nexthops",
+	"Both NH and NH-Group", "Invalid Src or Dst", "Deleting Sequence",
+};
+
+void pbr_map_reason_string(unsigned int reason, char *buf, int size)
+{
+	unsigned int bit;
+	int len = 0;
+
+	if (!buf)
+		return;
+
+	for (bit = 0; bit < array_size(pbr_map_reason_str); bit++) {
+		if ((reason & (1 << bit)) && (len < size)) {
+			len += snprintf((buf + len), (size - len), "%s%s",
+					(len > 0) ? ", " : "",
+					pbr_map_reason_str[bit]);
+		}
+	}
+}
+
 
 void pbr_map_interface_delete(struct pbr_map *pbrm, struct interface *ifp_del)
 {
 
 	struct listnode *node;
-	struct interface *ifp;
+	struct pbr_map_interface *pmi;
 	struct pbr_event *pbre;
 
-	for (ALL_LIST_ELEMENTS_RO(pbrm->incoming, node, ifp)) {
-		if (ifp_del == ifp)
+	for (ALL_LIST_ELEMENTS_RO(pbrm->incoming, node, pmi)) {
+		if (ifp_del == pmi->ifp)
 			break;
 	}
 
-	if (ifp) {
-		listnode_delete(pbrm->incoming, ifp_del);
+	if (pmi) {
+		pmi->delete = true;
 
 		pbre = pbr_event_new();
-		pbre->event = PBR_POLICY_CHANGED;
-		strcpy(pbre->name, pbrm->name);
+		pbre->event = PBR_POLICY_DELETED;
+		strcpy(pbre->name, pmi->ifp->name);
 		pbr_event_enqueue(pbre);
 	}
 }
@@ -100,15 +135,18 @@ void pbr_map_interface_delete(struct pbr_map *pbrm, struct interface *ifp_del)
 void pbr_map_add_interface(struct pbr_map *pbrm, struct interface *ifp_add)
 {
 	struct listnode *node;
-	struct interface *ifp;
+	struct pbr_map_interface *pmi;
 	struct pbr_event *pbre;
 
-	for (ALL_LIST_ELEMENTS_RO(pbrm->incoming, node, ifp)) {
-		if (ifp_add == ifp)
+	for (ALL_LIST_ELEMENTS_RO(pbrm->incoming, node, pmi)) {
+		if (ifp_add == pmi->ifp)
 			return;
 	}
 
-	listnode_add_sort(pbrm->incoming, ifp_add);
+	pmi = XCALLOC(MTYPE_PBR_MAP_INTERFACE, sizeof(*pmi));
+	pmi->ifp = ifp_add;
+	pmi->pbrm = pbrm;
+	listnode_add_sort(pbrm->incoming, pmi);
 
 	pbre = pbr_event_new();
 	pbre->event = PBR_POLICY_CHANGED;
@@ -133,6 +171,64 @@ struct pbr_map *pbrm_find(const char *name)
 	return RB_FIND(pbr_map_entry_head, &pbr_maps, &pbrm);
 }
 
+extern void pbr_map_delete(const char *name, uint32_t seqno)
+{
+	struct pbr_map *pbrm;
+	struct pbr_map_sequence *pbrms;
+	struct listnode *node, *nnode;
+	bool uninstall = false;
+
+	pbrm = pbrm_find(name);
+
+	for (ALL_LIST_ELEMENTS(pbrm->seqnumbers, node, nnode, pbrms)) {
+		if (pbrms->reason & PBR_MAP_DEL_SEQUENCE_NUMBER) {
+			uninstall = true;
+			break;
+		}
+	}
+
+	if (uninstall)
+		pbr_send_pbr_map(pbrm, 0);
+
+	for (ALL_LIST_ELEMENTS(pbrm->seqnumbers, node, nnode, pbrms)) {
+		if (pbrms)
+			if (pbrms->reason & PBR_MAP_DEL_SEQUENCE_NUMBER)
+				listnode_delete(pbrm->seqnumbers, pbrms);
+	}
+
+	if (pbrm->seqnumbers->count == 0) {
+		RB_REMOVE(pbr_map_entry_head, &pbr_maps, pbrm);
+		XFREE(MTYPE_PBR_MAP, pbrm);
+	}
+}
+
+extern struct pbr_map_sequence *pbrms_lookup_unique(uint32_t unique,
+						    ifindex_t ifindex)
+{
+	struct pbr_map_sequence *pbrms;
+	struct listnode *snode, *inode;
+	struct pbr_map_interface *pmi;
+	struct pbr_map *pbrm;
+
+	RB_FOREACH (pbrm, pbr_map_entry_head, &pbr_maps) {
+		for (ALL_LIST_ELEMENTS_RO(pbrm->incoming, inode, pmi)) {
+			if (pmi->ifp->ifindex != ifindex)
+				continue;
+
+			for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, snode,
+						  pbrms)) {
+				zlog_debug("%s: Comparing %u to %u",
+					   __PRETTY_FUNCTION__, pbrms->unique,
+					   unique);
+				if (pbrms->unique == unique)
+					return pbrms;
+			}
+		}
+	}
+
+	return NULL;
+}
+
 extern struct pbr_map_sequence *pbrms_get(const char *name, uint32_t seqno)
 {
 	struct pbr_map *pbrm;
@@ -142,7 +238,7 @@ extern struct pbr_map_sequence *pbrms_get(const char *name, uint32_t seqno)
 
 	pbrm = pbrm_find(name);
 	if (!pbrm) {
-		pbrm = XCALLOC(MTYPE_TMP, sizeof(*pbrm));
+		pbrm = XCALLOC(MTYPE_PBR_MAP, sizeof(*pbrm));
 		strcpy(pbrm->name, name);
 
 		pbrm->seqnumbers = list_new();
@@ -155,7 +251,7 @@ extern struct pbr_map_sequence *pbrms_get(const char *name, uint32_t seqno)
 		pbrm->incoming->cmp =
 			(int (*)(void *, void *))pbr_map_interface_compare;
 		pbrm->incoming->del =
-			(void (*)(void *))pbr_map_interface_delete;
+			(void (*)(void *))pbr_map_interface_list_delete;
 
 		RB_INSERT(pbr_map_entry_head, &pbr_maps, pbrm);
 
@@ -172,7 +268,8 @@ extern struct pbr_map_sequence *pbrms_get(const char *name, uint32_t seqno)
 	}
 
 	if (!pbrms) {
-		pbrms = XCALLOC(MTYPE_TMP, sizeof(*pbrms));
+		pbrms = XCALLOC(MTYPE_PBR_MAP_SEQNO, sizeof(*pbrms));
+		pbrms->unique = pbr_map_sequence_unique++;
 		pbrms->seqno = seqno;
 		pbrms->ruleno = pbr_nht_get_next_rule(seqno);
 		pbrms->parent = pbrm;
@@ -182,6 +279,8 @@ extern struct pbr_map_sequence *pbrms_get(const char *name, uint32_t seqno)
 
 		QOBJ_REG(pbrms, pbr_map_sequence);
 		listnode_add_sort(pbrm->seqnumbers, pbrms);
+
+		pbrm->installed = false;
 	}
 
 	if (pbre)
@@ -277,7 +376,12 @@ extern void pbr_map_schedule_policy_from_nhg(const char *nh_group)
 	struct listnode *node;
 
 	RB_FOREACH (pbrm, pbr_map_entry_head, &pbr_maps) {
+		zlog_debug("%s: Looking at %s", __PRETTY_FUNCTION__,
+			   pbrm->name);
 		for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, node, pbrms)) {
+			zlog_debug("\tNH Grp name: %s",
+				   pbrms->nhgrp_name ? pbrms->nhgrp_name
+						     : "NULL");
 			if (pbrms->nhgrp_name
 			    && (strcmp(nh_group, pbrms->nhgrp_name) == 0)) {
 				struct pbr_event *pbre;
@@ -285,8 +389,11 @@ extern void pbr_map_schedule_policy_from_nhg(const char *nh_group)
 				pbrms->nhs_installed = true;
 
 				pbre = pbr_event_new();
-				pbre->event = PBR_MAP_POLICY_INSTALL;
+				pbre->event = PBR_MAP_MODIFY;
 				strcpy(pbre->name, pbrm->name);
+				pbre->seqno = pbrms->seqno;
+
+				pbr_event_enqueue(pbre);
 			}
 		}
 	}
@@ -299,6 +406,7 @@ extern void pbr_map_policy_install(const char *name)
 	struct listnode *node;
 	bool install;
 
+	zlog_debug("%s: for %s", __PRETTY_FUNCTION__, name);
 	pbrm = pbrm_find(name);
 	if (!pbrm)
 		return;
@@ -314,7 +422,28 @@ extern void pbr_map_policy_install(const char *name)
 
 	if (install) {
 		zlog_debug("\tInstalling");
-		pbr_send_pbr_map(pbrm);
+		pbr_send_pbr_map(pbrm, true);
+	}
+}
+
+extern void pbr_map_policy_delete(const char *ifname)
+{
+	struct listnode *node, *nnode;
+	struct pbr_map_interface *pmi;
+	struct pbr_map *pbrm;
+
+	RB_FOREACH (pbrm, pbr_map_entry_head, &pbr_maps) {
+		for (ALL_LIST_ELEMENTS(pbrm->incoming, node, nnode, pmi)) {
+			zlog_debug("Comparing %s to %s %d", pmi->ifp->name,
+				   ifname, pmi->delete);
+			if (strcmp(ifname, pmi->ifp->name) != 0)
+				continue;
+
+			pbr_send_pbr_map(pbrm, false);
+			listnode_delete(pbrm->incoming, pmi);
+			pmi->pbrm = NULL;
+			XFREE(MTYPE_PBR_MAP_INTERFACE, pmi);
+		}
 	}
 }
 
@@ -358,6 +487,7 @@ extern void pbr_map_check(const char *name, uint32_t seqno)
 	struct listnode *node;
 	struct pbr_map *pbrm;
 
+	zlog_debug("%s: for %s(%u)", __PRETTY_FUNCTION__, name, seqno);
 	if (pbr_map_check_valid(name))
 		zlog_debug("We are totally valid %s\n", name);
 
@@ -396,7 +526,11 @@ extern void pbr_map_install(const char *name)
 		return;
 	}
 
-	pbr_send_pbr_map(pbrm);
+	if (!pbrm->incoming->count)
+		return;
+
+	pbr_send_pbr_map(pbrm, true);
+	pbrm->installed = true;
 }
 
 extern void pbr_map_add_interfaces(const char *name)
@@ -428,7 +562,6 @@ extern void pbr_map_add_interfaces(const char *name)
 extern void pbr_map_check_policy_change(const char *name)
 {
 	struct pbr_map *pbrm;
-	bool original;
 
 	pbrm = pbrm_find(name);
 	if (!pbrm) {
@@ -437,9 +570,8 @@ extern void pbr_map_check_policy_change(const char *name)
 		return;
 	}
 
-	original = pbrm->valid;
 	pbr_map_check_valid(name);
-	if (original != pbrm->valid) {
+	if (pbrm->valid && !pbrm->installed) {
 		struct pbr_event *pbre;
 
 		pbre = pbr_event_new();
@@ -453,4 +585,6 @@ extern void pbr_map_check_policy_change(const char *name)
 extern void pbr_map_init(void)
 {
 	RB_INIT(pbr_map_entry_head, &pbr_maps);
+
+	pbr_map_sequence_unique = 1;
 }

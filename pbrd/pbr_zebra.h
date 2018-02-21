@@ -22,8 +22,6 @@
 #ifndef __PBR_ZEBRA_H__
 #define __PBR_ZEBRA_H__
 
-DECLARE_MTYPE(PBR_INTERFACE)
-
 struct pbr_interface {
 	char mapname[100];
 };
@@ -31,10 +29,11 @@ struct pbr_interface {
 extern void pbr_zebra_init(void);
 
 extern void route_add(struct pbr_nexthop_group_cache *pnhgc,
-		      struct nexthop_group_cmd *nhgc);
-extern void route_delete(struct pbr_nexthop_group_cache *pnhgc);
+		      struct nexthop_group_cmd *nhgc, afi_t install_afi);
+extern void route_delete(struct pbr_nexthop_group_cache *pnhgc,
+			 afi_t install_afi);
 
 extern void pbr_send_rnh(struct nexthop *nhop, bool reg);
 
-extern void pbr_send_pbr_map(struct pbr_map *pbrm);
+extern void pbr_send_pbr_map(struct pbr_map *pbrm, bool install);
 #endif
