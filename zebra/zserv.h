@@ -28,6 +28,7 @@
 #include "routemap.h"
 #include "vty.h"
 #include "zclient.h"
+#include "frr_pthread.h"
 
 #include "zebra/zebra_ns.h"
 #include "zebra/zebra_pw.h"
@@ -130,6 +131,9 @@ struct zserv {
 
 /* Zebra instance */
 struct zebra_t {
+	#define ZSERV_PTHR_ID 1
+	struct frr_pthread *zserv_pthr;
+
 	/* Thread master */
 	struct thread_master *master;
 	struct list *client_list;

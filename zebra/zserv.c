@@ -97,7 +97,7 @@ static int zserv_flush_data(struct thread *thread)
 		break;
 	case BUFFER_PENDING:
 		client->t_write = NULL;
-		thread_add_write(zebrad.master, zserv_flush_data, client,
+		thread_add_write(zebrad.zserv_pthr->master, zserv_flush_data, client,
 				 client->sock, &client->t_write);
 		break;
 	case BUFFER_EMPTY:
@@ -133,14 +133,14 @@ int zebra_server_send_message(struct zserv *client)
 		   be
 		   deleted. */
 		client->t_suicide = NULL;
-		thread_add_event(zebrad.master, zserv_delayed_close, client, 0,
+		thread_add_event(zebrad.zserv_pthr->master, zserv_delayed_close, client, 0,
 				 &client->t_suicide);
 		return -1;
 	case BUFFER_EMPTY:
 		THREAD_OFF(client->t_write);
 		break;
 	case BUFFER_PENDING:
-		thread_add_write(zebrad.master, zserv_flush_data, client,
+		thread_add_write(zebrad.zserv_pthr->master, zserv_flush_data, client,
 				 client->sock, &client->t_write);
 		break;
 	}
@@ -2982,12 +2982,12 @@ static void zebra_event(enum event event, int sock, struct zserv *client)
 {
 	switch (event) {
 	case ZEBRA_SERV:
-		thread_add_read(zebrad.master, zebra_accept, client, sock,
+		thread_add_read(zebrad.zserv_pthr->master, zebra_accept, client, sock,
 				NULL);
 		break;
 	case ZEBRA_READ:
 		client->t_read = NULL;
-		thread_add_read(zebrad.master, zebra_client_read, client, sock,
+		thread_add_read(zebrad.zserv_pthr->master, zebra_client_read, client, sock,
 				&client->t_read);
 		break;
 	case ZEBRA_WRITE:
@@ -3188,6 +3188,15 @@ void zserv_read_file(char *input)
 
 void zserv_init(void)
 {
+	/* initialize thread */
+	struct frr_pthread_attr zserv_pthr_attr = {
+		.id = ZSERV_PTHR_ID,
+		.start = frr_pthread_attr_default.start,
+		.stop = frr_pthread_attr_default.stop,
+		.name = "Zebra API server"
+	};
+	zebrad.zserv_pthr = frr_pthread_new(&zserv_pthr_attr);
+
 	/* Client list init. */
 	zebrad.client_list = list_new();
 	zebrad.client_list->del = (void (*)(void *))zebra_client_free;

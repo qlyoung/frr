@@ -35,6 +35,7 @@
 #include "sigevent.h"
 #include "vrf.h"
 #include "libfrr.h"
+#include "frr_pthread.h"
 
 #include "zebra/rib.h"
 #include "zebra/zserv.h"
@@ -293,6 +294,7 @@ int main(int argc, char **argv)
 
 	vty_config_lockless();
 	zebrad.master = frr_init();
+	frr_pthread_init();
 
 	/* Zebra related initialize. */
 	zserv_init();
@@ -363,6 +365,8 @@ int main(int argc, char **argv)
 	/* Init label manager */
 	label_manager_init(lblmgr_path);
 
+	frr_pthread_run(zebrad.zserv_pthr, NULL);
+	frr_pthread_wait_running(zebrad.zserv_pthr);
 	frr_run(zebrad.master);
 
 	/* Not reached... */
