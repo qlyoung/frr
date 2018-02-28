@@ -1960,7 +1960,7 @@ static int show_per_daemon(const char *line, const char *headline)
 	return ret;
 }
 
-DEFUNSH_HIDDEN (0x00,
+DEFUNSH_HIDDEN (VTYSH_OSPFD,
                 vtysh_debug_all,
                 vtysh_debug_all_cmd,
                 "[no] debug all",

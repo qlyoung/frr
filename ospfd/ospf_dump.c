@@ -29,6 +29,8 @@
 #include "stream.h"
 #include "log.h"
 #include "sockopt.h"
+#include "memory.h"
+#include "debug.h"
 
 #include "ospfd/ospfd.h"
 #include "ospfd/ospf_interface.h"
@@ -42,29 +44,48 @@
 #include "ospfd/ospf_packet.h"
 #include "ospfd/ospf_network.h"
 
-/* Configuration debug option variables. */
-unsigned long conf_debug_ospf_packet[5] = {0, 0, 0, 0, 0};
-unsigned long conf_debug_ospf_event = 0;
-unsigned long conf_debug_ospf_ism = 0;
-unsigned long conf_debug_ospf_nsm = 0;
-unsigned long conf_debug_ospf_lsa = 0;
-unsigned long conf_debug_ospf_zebra = 0;
-unsigned long conf_debug_ospf_nssa = 0;
-unsigned long conf_debug_ospf_te = 0;
-unsigned long conf_debug_ospf_ext = 0;
-unsigned long conf_debug_ospf_sr = 0;
+/* debug control records */
+struct debug debug_ospf_packet[5] = {
+	{0, "OSPF Packet - hello"},      {0, "OSPF Packet - dd"},
+	{0, "OSPF Packet - ls-request"}, {0, "OSPF Packet - ls-update"},
+	{0, "OSPF Packet - ls-ack"},
+};
+struct debug debug_ospf_event = {0, "OSPF event"};
+struct debug debug_ospf_ism = {0, "OSPF ISM"};
+struct debug debug_ospf_nsm = {0, "OSPF NSM"};
+struct debug debug_ospf_lsa = {0, "OSPF LSA"};
+struct debug debug_ospf_zebra = {0, "OSPF Zebra"};
+struct debug debug_ospf_nssa = {0, "OSPF NSSA"};
+struct debug debug_ospf_te = {0, "OSPF TE"};
+struct debug debug_ospf_ext = {0, "OSPF EXT"};
+struct debug debug_ospf_sr = {0, "OSPF SR"};
 
-/* Enable debug option variables -- valid only session. */
-unsigned long term_debug_ospf_packet[5] = {0, 0, 0, 0, 0};
-unsigned long term_debug_ospf_event = 0;
-unsigned long term_debug_ospf_ism = 0;
-unsigned long term_debug_ospf_nsm = 0;
-unsigned long term_debug_ospf_lsa = 0;
-unsigned long term_debug_ospf_zebra = 0;
-unsigned long term_debug_ospf_nssa = 0;
-unsigned long term_debug_ospf_te = 0;
-unsigned long term_debug_ospf_ext = 0;
-unsigned long term_debug_ospf_sr = 0;
+struct debug *debugs[] = {
+	&debug_ospf_packet[0], &debug_ospf_packet[1], &debug_ospf_packet[2],
+	&debug_ospf_packet[3], &debug_ospf_packet[4], &debug_ospf_event,
+	&debug_ospf_ism,       &debug_ospf_nsm,       &debug_ospf_lsa,
+	&debug_ospf_zebra,     &debug_ospf_nssa,      &debug_ospf_te,
+	&debug_ospf_ext,       &debug_ospf_sr,
+};
+
+/*
+ * MT-Safe
+ *
+ * Set mode on all debugs.
+ */
+static void ospf_debug_set_all(uint32_t flags, bool set)
+{
+	for (unsigned int i = 0; i < array_size(debugs); i++) {
+		if (set)
+			DEBUG_FLAGS_SET(debugs[i], flags);
+		else
+			DEBUG_FLAGS_UNSET(debugs[i], flags);
+
+		/* if all modes have been turned off, don't preserve options */
+		if (!DEBUG_MODE_CHECK(debugs[i], DEBUG_MODE_ALL))
+			DEBUG_CLEAR(debugs[i]);
+	}
+}
 
 const char *ospf_redist_string(u_int route_type)
 {
@@ -572,7 +593,8 @@ void ospf_packet_dump(struct stream *s)
 	ospfh = (struct ospf_header *)stream_pnt(s);
 
 	/* Until detail flag is set, return. */
-	if (!(term_debug_ospf_packet[ospfh->type - 1] & OSPF_DEBUG_DETAIL))
+	if (!DEBUG_OPT_CHECK(&debug_ospf_packet[ospfh->type - 1],
+			     OSPF_DEBUG_DETAIL))
 		return;
 
 	/* Show OSPF header detail. */
@@ -602,24 +624,22 @@ void ospf_packet_dump(struct stream *s)
 	stream_set_getp(s, gp);
 }
 
-DEFUN (debug_ospf_packet,
-       debug_ospf_packet_cmd,
-       "debug ospf [(1-65535)] packet <hello|dd|ls-request|ls-update|ls-ack|all> [<send [detail]|recv [detail]|detail>]",
-       DEBUG_STR
-       OSPF_STR
-       "Instance ID\n"
-       "OSPF packets\n"
-       "OSPF Hello\n"
-       "OSPF Database Description\n"
-       "OSPF Link State Request\n"
-       "OSPF Link State Update\n"
-       "OSPF Link State Acknowledgment\n"
-       "OSPF all packets\n"
-       "Packet sent\n"
-       "Detail Information\n"
-       "Packet received\n"
-       "Detail Information\n"
-       "Detail Information\n")
+DEFUN(debug_ospf_packet_vty, debug_ospf_packet_vty_cmd,
+      "debug ospf [(1-65535)] packet <hello|dd|ls-request|ls-update|ls-ack|all> [<send [detail]|recv [detail]|detail>]",
+      DEBUG_STR OSPF_STR
+      "Instance ID\n"
+      "OSPF packets\n"
+      "OSPF Hello\n"
+      "OSPF Database Description\n"
+      "OSPF Link State Request\n"
+      "OSPF Link State Update\n"
+      "OSPF Link State Acknowledgment\n"
+      "OSPF all packets\n"
+      "Packet sent\n"
+      "Detail Information\n"
+      "Packet received\n"
+      "Detail Information\n"
+      "Detail Information\n")
 {
 	int inst = (argv[2]->type == RANGE_TKN) ? 1 : 0;
 	int detail = strmatch(argv[argc - 1]->text, "detail");
@@ -668,10 +688,8 @@ DEFUN (debug_ospf_packet,
 
 	for (i = 0; i < 5; i++)
 		if (type & (0x01 << i)) {
-			if (vty->node == CONFIG_NODE)
-				DEBUG_PACKET_ON(i, flag);
-			else
-				TERM_DEBUG_PACKET_ON(i, flag);
+			flag |= DEBUG_NODE2MODE(vty->node);
+			DEBUG_FLAGS_SET(&debug_ospf_packet[i], flag);
 		}
 
 	return CMD_SUCCESS;
@@ -744,10 +762,8 @@ DEFUN (no_debug_ospf_packet,
 
 	for (i = 0; i < 5; i++)
 		if (type & (0x01 << i)) {
-			if (vty->node == CONFIG_NODE)
-				DEBUG_PACKET_OFF(i, flag);
-			else
-				TERM_DEBUG_PACKET_OFF(i, flag);
+			flag |= DEBUG_NODE2MODE(vty->node);
+			DEBUG_FLAGS_SET(&debug_ospf_packet[i], flag);
 		}
 
 #ifdef DEBUG
@@ -760,52 +776,33 @@ for (i = 0; i < 5; i++)
 	return CMD_SUCCESS;
 }
 
-DEFUN (debug_ospf_ism,
-       debug_ospf_ism_cmd,
-       "debug ospf [(1-65535)] ism [<status|events|timers>]",
-       DEBUG_STR
-       OSPF_STR
-       "Instance ID\n"
-       "OSPF Interface State Machine\n"
-       "ISM Status Information\n"
-       "ISM Event Information\n"
-       "ISM TImer Information\n")
+DEFUN(debug_ospf_ism_vty, debug_ospf_ism_vty_cmd,
+      "debug ospf [(1-65535)] ism [<status|events|timers>]",
+      DEBUG_STR OSPF_STR
+      "Instance ID\n"
+      "OSPF Interface State Machine\n"
+      "ISM Status Information\n"
+      "ISM Event Information\n"
+      "ISM TImer Information\n")
 {
 	int inst = (argv[2]->type == RANGE_TKN);
 	char *dbgparam = (argc == 4 + inst) ? argv[argc - 1]->text : NULL;
+	uint32_t flag;
 
-	if (inst) // user passed instance ID
-	{
-		if (!ospf_lookup_instance(strtoul(argv[2]->arg, NULL, 10)))
-			return CMD_NOT_MY_INSTANCE;
-	}
+	if (inst && !ospf_lookup_instance(strtoul(argv[2]->arg, NULL, 10)))
+		return CMD_NOT_MY_INSTANCE;
 
-	if (vty->node == CONFIG_NODE) {
-		if (!dbgparam)
-			DEBUG_ON(ism, ISM);
-		else {
-			if (strmatch(dbgparam, "status"))
-				DEBUG_ON(ism, ISM_STATUS);
-			else if (strmatch(dbgparam, "events"))
-				DEBUG_ON(ism, ISM_EVENTS);
-			else if (strmatch(dbgparam, "timers"))
-				DEBUG_ON(ism, ISM_TIMERS);
-		}
-
-		return CMD_SUCCESS;
-	}
-
-	/* ENABLE_NODE. */
+	flag = DEBUG_NODE2MODE(vty->node);
 	if (!dbgparam)
-		TERM_DEBUG_ON(ism, ISM);
-	else {
-		if (strmatch(dbgparam, "status"))
-			TERM_DEBUG_ON(ism, ISM_STATUS);
-		else if (strmatch(dbgparam, "events"))
-			TERM_DEBUG_ON(ism, ISM_EVENTS);
-		else if (strmatch(dbgparam, "timers"))
-			TERM_DEBUG_ON(ism, ISM_TIMERS);
-	}
+		flag |= OSPF_DEBUG_ISM;
+	else if (strmatch(dbgparam, "status"))
+		flag |= OSPF_DEBUG_ISM_STATUS;
+	else if (strmatch(dbgparam, "events"))
+		flag |= OSPF_DEBUG_ISM_EVENTS;
+	else if (strmatch(dbgparam, "timers"))
+		flag |= OSPF_DEBUG_ISM_TIMERS;
+
+	DEBUG_FLAGS_SET(&debug_ospf_ism, flag);
 
 	return CMD_SUCCESS;
 }
@@ -824,6 +821,7 @@ DEFUN (no_debug_ospf_ism,
 {
 	int inst = (argv[3]->type == RANGE_TKN);
 	char *dbgparam = (argc == 5 + inst) ? argv[argc - 1]->text : NULL;
+	uint32_t flag;
 
 	if (inst) // user passed instance ID
 	{
@@ -831,32 +829,17 @@ DEFUN (no_debug_ospf_ism,
 			return CMD_NOT_MY_INSTANCE;
 	}
 
-	if (vty->node == CONFIG_NODE) {
-		if (!dbgparam)
-			DEBUG_OFF(ism, ISM);
-		else {
-			if (strmatch(dbgparam, "status"))
-				DEBUG_OFF(ism, ISM_STATUS);
-			else if (strmatch(dbgparam, "events"))
-				DEBUG_OFF(ism, ISM_EVENTS);
-			else if (strmatch(dbgparam, "timers"))
-				DEBUG_OFF(ism, ISM_TIMERS);
-		}
-
-		return CMD_SUCCESS;
-	}
-
-	/* ENABLE_NODE. */
+	flag = 0;
 	if (!dbgparam)
-		TERM_DEBUG_OFF(ism, ISM);
-	else {
-		if (strmatch(dbgparam, "status"))
-			TERM_DEBUG_OFF(ism, ISM_STATUS);
-		else if (strmatch(dbgparam, "events"))
-			TERM_DEBUG_OFF(ism, ISM_EVENTS);
-		else if (strmatch(dbgparam, "timers"))
-			TERM_DEBUG_OFF(ism, ISM_TIMERS);
-	}
+		flag |= OSPF_DEBUG_ISM;
+	else if (strmatch(dbgparam, "status"))
+		flag |= OSPF_DEBUG_ISM_STATUS;
+	else if (strmatch(dbgparam, "events"))
+		flag |= OSPF_DEBUG_ISM_EVENTS;
+	else if (strmatch(dbgparam, "timers"))
+		flag |= OSPF_DEBUG_ISM_TIMERS;
+
+	DEBUG_OPT_UNSET(&debug_ospf_ism, flag);
 
 	return CMD_SUCCESS;
 }
@@ -864,45 +847,29 @@ DEFUN (no_debug_ospf_ism,
 static int debug_ospf_nsm_common(struct vty *vty, int arg_base, int argc,
 				 struct cmd_token **argv)
 {
-	if (vty->node == CONFIG_NODE) {
-		if (argc == arg_base + 0)
-			DEBUG_ON(nsm, NSM);
-		else if (argc == arg_base + 1) {
-			if (strmatch(argv[arg_base]->text, "status"))
-				DEBUG_ON(nsm, NSM_STATUS);
-			else if (strmatch(argv[arg_base]->text, "events"))
-				DEBUG_ON(nsm, NSM_EVENTS);
-			else if (strmatch(argv[arg_base]->text, "timers"))
-				DEBUG_ON(nsm, NSM_TIMERS);
-		}
-
-		return CMD_SUCCESS;
-	}
-
-	/* ENABLE_NODE. */
+	uint32_t flag = DEBUG_NODE2MODE(vty->node);
 	if (argc == arg_base + 0)
-		TERM_DEBUG_ON(nsm, NSM);
+		flag |= OSPF_DEBUG_NSM;
 	else if (argc == arg_base + 1) {
 		if (strmatch(argv[arg_base]->text, "status"))
-			TERM_DEBUG_ON(nsm, NSM_STATUS);
+			flag |= OSPF_DEBUG_NSM_STATUS;
 		else if (strmatch(argv[arg_base]->text, "events"))
-			TERM_DEBUG_ON(nsm, NSM_EVENTS);
+			flag |= OSPF_DEBUG_NSM_EVENTS;
 		else if (strmatch(argv[arg_base]->text, "timers"))
-			TERM_DEBUG_ON(nsm, NSM_TIMERS);
+			flag |= OSPF_DEBUG_NSM_TIMERS;
 	}
 
+	DEBUG_FLAGS_SET(&debug_ospf_nsm, flag);
 	return CMD_SUCCESS;
 }
 
-DEFUN (debug_ospf_nsm,
-       debug_ospf_nsm_cmd,
-       "debug ospf nsm [<status|events|timers>]",
-       DEBUG_STR
-       OSPF_STR
-       "OSPF Neighbor State Machine\n"
-       "NSM Status Information\n"
-       "NSM Event Information\n"
-       "NSM Timer Information\n")
+DEFUN(debug_ospf_nsm_vty, debug_ospf_nsm_vty_cmd,
+      "debug ospf nsm [<status|events|timers>]",
+      DEBUG_STR OSPF_STR
+      "OSPF Neighbor State Machine\n"
+      "NSM Status Information\n"
+      "NSM Event Information\n"
+      "NSM Timer Information\n")
 {
 	return debug_ospf_nsm_common(vty, 3, argc, argv);
 }
@@ -932,33 +899,21 @@ DEFUN (debug_ospf_instance_nsm,
 static int no_debug_ospf_nsm_common(struct vty *vty, int arg_base, int argc,
 				    struct cmd_token **argv)
 {
-	/* XXX qlyoung */
-	if (vty->node == CONFIG_NODE) {
-		if (argc == arg_base + 0)
-			DEBUG_OFF(nsm, NSM);
-		else if (argc == arg_base + 1) {
-			if (strmatch(argv[arg_base]->text, "status"))
-				DEBUG_OFF(nsm, NSM_STATUS);
-			else if (strmatch(argv[arg_base]->text, "events"))
-				DEBUG_OFF(nsm, NSM_EVENTS);
-			else if (strmatch(argv[arg_base]->text, "timers"))
-				DEBUG_OFF(nsm, NSM_TIMERS);
-		}
-
-		return CMD_SUCCESS;
+	uint32_t flag = 0;
+	if (argc == arg_base + 0) {
+		flag |= DEBUG_NODE2MODE(vty->node);
+		flag |= OSPF_DEBUG_NSM;
 	}
-
-	/* ENABLE_NODE. */
-	if (argc == arg_base + 0)
-		TERM_DEBUG_OFF(nsm, NSM);
 	else if (argc == arg_base + 1) {
 		if (strmatch(argv[arg_base]->text, "status"))
-			TERM_DEBUG_OFF(nsm, NSM_STATUS);
+			flag |= OSPF_DEBUG_NSM_STATUS;
 		else if (strmatch(argv[arg_base]->text, "events"))
-			TERM_DEBUG_OFF(nsm, NSM_EVENTS);
+			flag |= OSPF_DEBUG_NSM_EVENTS;
 		else if (strmatch(argv[arg_base]->text, "timers"))
-			TERM_DEBUG_OFF(nsm, NSM_TIMERS);
+			flag |= OSPF_DEBUG_NSM_TIMERS;
 	}
+
+	DEBUG_FLAGS_UNSET(&debug_ospf_nsm, flag);
 
 	return CMD_SUCCESS;
 }
@@ -1004,50 +959,34 @@ DEFUN (no_debug_ospf_instance_nsm,
 static int debug_ospf_lsa_common(struct vty *vty, int arg_base, int argc,
 				 struct cmd_token **argv)
 {
-	if (vty->node == CONFIG_NODE) {
-		if (argc == arg_base + 0)
-			DEBUG_ON(lsa, LSA);
-		else if (argc == arg_base + 1) {
-			if (strmatch(argv[arg_base]->text, "generate"))
-				DEBUG_ON(lsa, LSA_GENERATE);
-			else if (strmatch(argv[arg_base]->text, "flooding"))
-				DEBUG_ON(lsa, LSA_FLOODING);
-			else if (strmatch(argv[arg_base]->text, "install"))
-				DEBUG_ON(lsa, LSA_INSTALL);
-			else if (strmatch(argv[arg_base]->text, "refresh"))
-				DEBUG_ON(lsa, LSA_REFRESH);
-		}
+	uint32_t flag = DEBUG_NODE2MODE(vty->node);
 
-		return CMD_SUCCESS;
-	}
-
-	/* ENABLE_NODE. */
 	if (argc == arg_base + 0)
-		TERM_DEBUG_ON(lsa, LSA);
+		flag |= OSPF_DEBUG_LSA;
 	else if (argc == arg_base + 1) {
 		if (strmatch(argv[arg_base]->text, "generate"))
-			TERM_DEBUG_ON(lsa, LSA_GENERATE);
+			flag |= OSPF_DEBUG_LSA_GENERATE;
 		else if (strmatch(argv[arg_base]->text, "flooding"))
-			TERM_DEBUG_ON(lsa, LSA_FLOODING);
+			flag |= OSPF_DEBUG_LSA_FLOODING;
 		else if (strmatch(argv[arg_base]->text, "install"))
-			TERM_DEBUG_ON(lsa, LSA_INSTALL);
+			flag |= OSPF_DEBUG_LSA_INSTALL;
 		else if (strmatch(argv[arg_base]->text, "refresh"))
-			TERM_DEBUG_ON(lsa, LSA_REFRESH);
+			flag |= OSPF_DEBUG_LSA_REFRESH;
 	}
+
+	DEBUG_FLAGS_SET(&debug_ospf_lsa, flag);
 
 	return CMD_SUCCESS;
 }
 
-DEFUN (debug_ospf_lsa,
-       debug_ospf_lsa_cmd,
-       "debug ospf lsa [<generate|flooding|install|refresh>]",
-       DEBUG_STR
-       OSPF_STR
-       "OSPF Link State Advertisement\n"
-       "LSA Generation\n"
-       "LSA Flooding\n"
-       "LSA Install/Delete\n"
-       "LSA Refresh\n")
+DEFUN(debug_ospf_lsa_vty, debug_ospf_lsa_vty_cmd,
+      "debug ospf lsa [<generate|flooding|install|refresh>]",
+      DEBUG_STR OSPF_STR
+      "OSPF Link State Advertisement\n"
+      "LSA Generation\n"
+      "LSA Flooding\n"
+      "LSA Install/Delete\n"
+      "LSA Refresh\n")
 {
 	return debug_ospf_lsa_common(vty, 3, argc, argv);
 }
@@ -1078,39 +1017,26 @@ DEFUN (debug_ospf_instance_lsa,
 static int no_debug_ospf_lsa_common(struct vty *vty, int arg_base, int argc,
 				    struct cmd_token **argv)
 {
-	if (vty->node == CONFIG_NODE) {
-		if (argc == arg_base + 0)
-			DEBUG_OFF(lsa, LSA);
-		else if (argc == arg_base + 1) {
-			if (strmatch(argv[arg_base]->text, "generate"))
-				DEBUG_OFF(lsa, LSA_GENERATE);
-			else if (strmatch(argv[arg_base]->text, "flooding"))
-				DEBUG_OFF(lsa, LSA_FLOODING);
-			else if (strmatch(argv[arg_base]->text, "install"))
-				DEBUG_OFF(lsa, LSA_INSTALL);
-			else if (strmatch(argv[arg_base]->text, "refresh"))
-				DEBUG_OFF(lsa, LSA_REFRESH);
-		}
-
-		return CMD_SUCCESS;
+	uint32_t flag = 0;
+	if (argc == arg_base + 0) {
+		flag |= DEBUG_NODE2MODE(vty->node);
+		flag |= OSPF_DEBUG_LSA;
 	}
-
-	/* ENABLE_NODE. */
-	if (argc == arg_base + 0)
-		TERM_DEBUG_OFF(lsa, LSA);
 	else if (argc == arg_base + 1) {
 		if (strmatch(argv[arg_base]->text, "generate"))
-			TERM_DEBUG_OFF(lsa, LSA_GENERATE);
+			flag |= OSPF_DEBUG_LSA_GENERATE;
 		else if (strmatch(argv[arg_base]->text, "flooding"))
-			TERM_DEBUG_OFF(lsa, LSA_FLOODING);
+			flag |= OSPF_DEBUG_LSA_FLOODING;
 		else if (strmatch(argv[arg_base]->text, "install"))
-			TERM_DEBUG_OFF(lsa, LSA_INSTALL);
+			flag |= OSPF_DEBUG_LSA_INSTALL;
 		else if (strmatch(argv[arg_base]->text, "refresh"))
-			TERM_DEBUG_OFF(lsa, LSA_REFRESH);
+			flag |= OSPF_DEBUG_LSA_REFRESH;
 	}
 
+	DEBUG_FLAGS_UNSET(&debug_ospf_lsa, flag);
 	return CMD_SUCCESS;
 }
+
 
 DEFUN (no_debug_ospf_lsa,
        no_debug_ospf_lsa_cmd,
@@ -1154,40 +1080,26 @@ DEFUN (no_debug_ospf_instance_lsa,
 static int debug_ospf_zebra_common(struct vty *vty, int arg_base, int argc,
 				   struct cmd_token **argv)
 {
-	if (vty->node == CONFIG_NODE) {
-		if (argc == arg_base + 0)
-			DEBUG_ON(zebra, ZEBRA);
-		else if (argc == arg_base + 1) {
-			if (strmatch(argv[arg_base]->text, "interface"))
-				DEBUG_ON(zebra, ZEBRA_INTERFACE);
-			else if (strmatch(argv[arg_base]->text, "redistribute"))
-				DEBUG_ON(zebra, ZEBRA_REDISTRIBUTE);
-		}
-
-		return CMD_SUCCESS;
-	}
-
-	/* ENABLE_NODE. */
+	uint32_t flag = DEBUG_NODE2MODE(vty->node);
 	if (argc == arg_base + 0)
-		TERM_DEBUG_ON(zebra, ZEBRA);
+		flag |= OSPF_DEBUG_ZEBRA;
 	else if (argc == arg_base + 1) {
 		if (strmatch(argv[arg_base]->text, "interface"))
-			TERM_DEBUG_ON(zebra, ZEBRA_INTERFACE);
+			flag |= OSPF_DEBUG_ZEBRA_INTERFACE;
 		else if (strmatch(argv[arg_base]->text, "redistribute"))
-			TERM_DEBUG_ON(zebra, ZEBRA_REDISTRIBUTE);
+			flag |= OSPF_DEBUG_ZEBRA_INTERFACE;
 	}
+
+	DEBUG_FLAGS_SET(&debug_ospf_zebra, flag);
 
 	return CMD_SUCCESS;
 }
 
-DEFUN (debug_ospf_zebra,
-       debug_ospf_zebra_cmd,
-       "debug ospf zebra [<interface|redistribute>]",
-       DEBUG_STR
-       OSPF_STR
-       ZEBRA_STR
-       "Zebra interface\n"
-       "Zebra redistribute\n")
+DEFUN(debug_ospf_zebra_vty, debug_ospf_zebra_vty_cmd,
+      "debug ospf zebra [<interface|redistribute>]",
+      DEBUG_STR OSPF_STR ZEBRA_STR
+      "Zebra interface\n"
+      "Zebra redistribute\n")
 {
 	return debug_ospf_zebra_common(vty, 3, argc, argv);
 }
@@ -1216,29 +1128,19 @@ DEFUN (debug_ospf_instance_zebra,
 static int no_debug_ospf_zebra_common(struct vty *vty, int arg_base, int argc,
 				      struct cmd_token **argv)
 {
-	if (vty->node == CONFIG_NODE) {
-		if (argc == arg_base + 0)
-			DEBUG_OFF(zebra, ZEBRA);
-		else if (argc == arg_base + 1) {
-			if (strmatch(argv[arg_base]->text, "interface"))
-				DEBUG_OFF(zebra, ZEBRA_INTERFACE);
-			else if (strmatch(argv[arg_base]->text, "redistribute"))
-				DEBUG_OFF(zebra, ZEBRA_REDISTRIBUTE);
-		}
-
-		return CMD_SUCCESS;
+	uint32_t flag = 0;
+	if (argc == arg_base + 0) {
+		flag |= DEBUG_NODE2MODE(vty->node);
+		flag |= OSPF_DEBUG_ZEBRA;
 	}
-
-	/* ENABLE_NODE. */
-	if (argc == arg_base + 0)
-		TERM_DEBUG_OFF(zebra, ZEBRA);
 	else if (argc == arg_base + 1) {
 		if (strmatch(argv[arg_base]->text, "interface"))
-			TERM_DEBUG_OFF(zebra, ZEBRA_INTERFACE);
+			flag |= OSPF_DEBUG_ZEBRA_INTERFACE;
 		else if (strmatch(argv[arg_base]->text, "redistribute"))
-			TERM_DEBUG_OFF(zebra, ZEBRA_REDISTRIBUTE);
+			flag |= OSPF_DEBUG_ZEBRA_REDISTRIBUTE;
 	}
 
+	DEBUG_FLAGS_UNSET(&debug_ospf_zebra, flag);
 	return CMD_SUCCESS;
 }
 
@@ -1276,31 +1178,14 @@ DEFUN (no_debug_ospf_instance_zebra,
 	return no_debug_ospf_zebra_common(vty, 5, argc, argv);
 }
 
-
-DEFUN (debug_ospf_event,
-       debug_ospf_event_cmd,
-       "debug ospf event",
-       DEBUG_STR
-       OSPF_STR
-       "OSPF event information\n")
+DEFUN(debug_ospf_event_vty, debug_ospf_event_vty_cmd, "[no] debug ospf event",
+      NO_STR DEBUG_STR OSPF_STR "OSPF event information\n")
 {
-	if (vty->node == CONFIG_NODE)
-		CONF_DEBUG_ON(event, EVENT);
-	TERM_DEBUG_ON(event, EVENT);
-	return CMD_SUCCESS;
-}
-
-DEFUN (no_debug_ospf_event,
-       no_debug_ospf_event_cmd,
-       "no debug ospf event",
-       NO_STR
-       DEBUG_STR
-       OSPF_STR
-       "OSPF event information\n")
-{
-	if (vty->node == CONFIG_NODE)
-		CONF_DEBUG_OFF(event, EVENT);
-	TERM_DEBUG_OFF(event, EVENT);
+	uint32_t flags = DEBUG_NODE2MODE(vty->node);
+	if (strmatch(argv[0]->text, "no"))
+		DEBUG_MODE_UNSET(&debug_ospf_event, flags);
+	else
+		DEBUG_MODE_SET(&debug_ospf_event, flags);
 	return CMD_SUCCESS;
 }
 
@@ -1319,9 +1204,7 @@ DEFUN (debug_ospf_instance_event,
 	if (!ospf_lookup_instance(instance))
 		return CMD_SUCCESS;
 
-	if (vty->node == CONFIG_NODE)
-		CONF_DEBUG_ON(event, EVENT);
-	TERM_DEBUG_ON(event, EVENT);
+	DEBUG_MODE_SET(&debug_ospf_event, DEBUG_NODE2MODE(vty->node));
 	return CMD_SUCCESS;
 }
 
@@ -1341,36 +1224,18 @@ DEFUN (no_debug_ospf_instance_event,
 	if (!ospf_lookup_instance(instance))
 		return CMD_SUCCESS;
 
-	if (vty->node == CONFIG_NODE)
-		CONF_DEBUG_OFF(event, EVENT);
-	TERM_DEBUG_OFF(event, EVENT);
+	DEBUG_MODE_UNSET(&debug_ospf_event, DEBUG_NODE2MODE(vty->node));
 	return CMD_SUCCESS;
 }
 
-DEFUN (debug_ospf_nssa,
-       debug_ospf_nssa_cmd,
-       "debug ospf nssa",
-       DEBUG_STR
-       OSPF_STR
-       "OSPF nssa information\n")
+DEFUN(debug_ospf_nssa_vty, debug_ospf_nssa_vty_cmd, "[no] debug ospf nssa",
+      NO_STR DEBUG_STR OSPF_STR "OSPF nssa information\n")
 {
-	if (vty->node == CONFIG_NODE)
-		CONF_DEBUG_ON(nssa, NSSA);
-	TERM_DEBUG_ON(nssa, NSSA);
-	return CMD_SUCCESS;
-}
-
-DEFUN (no_debug_ospf_nssa,
-       no_debug_ospf_nssa_cmd,
-       "no debug ospf nssa",
-       NO_STR
-       DEBUG_STR
-       OSPF_STR
-       "OSPF nssa information\n")
-{
-	if (vty->node == CONFIG_NODE)
-		CONF_DEBUG_OFF(nssa, NSSA);
-	TERM_DEBUG_OFF(nssa, NSSA);
+	uint32_t flags = DEBUG_NODE2MODE(vty->node);
+	if (strmatch(argv[0]->text, "no"))
+		DEBUG_MODE_UNSET(&debug_ospf_nssa, flags);
+	else
+		DEBUG_MODE_SET(&debug_ospf_nssa, flags);
 	return CMD_SUCCESS;
 }
 
@@ -1389,9 +1254,7 @@ DEFUN (debug_ospf_instance_nssa,
 	if (!ospf_lookup_instance(instance))
 		return CMD_SUCCESS;
 
-	if (vty->node == CONFIG_NODE)
-		CONF_DEBUG_ON(nssa, NSSA);
-	TERM_DEBUG_ON(nssa, NSSA);
+	DEBUG_MODE_SET(&debug_ospf_nssa, DEBUG_NODE2MODE(vty->node));
 	return CMD_SUCCESS;
 }
 
@@ -1411,127 +1274,44 @@ DEFUN (no_debug_ospf_instance_nssa,
 	if (!ospf_lookup_instance(instance))
 		return CMD_SUCCESS;
 
-	if (vty->node == CONFIG_NODE)
-		CONF_DEBUG_OFF(nssa, NSSA);
-	TERM_DEBUG_OFF(nssa, NSSA);
+	DEBUG_MODE_UNSET(&debug_ospf_nssa, DEBUG_NODE2MODE(vty->node));
 	return CMD_SUCCESS;
 }
 
-DEFUN (debug_ospf_te,
-       debug_ospf_te_cmd,
-       "debug ospf te",
-       DEBUG_STR
-       OSPF_STR
-       "OSPF-TE information\n")
+DEFUN(debug_ospf_te_vty, debug_ospf_te_vty_cmd, "[no] debug ospf te",
+      NO_STR DEBUG_STR OSPF_STR "OSPF-TE information\n")
 {
-	if (vty->node == CONFIG_NODE)
-		CONF_DEBUG_ON(te, TE);
-	TERM_DEBUG_ON(te, TE);
+	uint32_t flags = DEBUG_NODE2MODE(vty->node);
+	if (strmatch(argv[0]->text, "no"))
+		DEBUG_MODE_UNSET(&debug_ospf_te, flags);
+	else
+		DEBUG_MODE_SET(&debug_ospf_te, flags);
 	return CMD_SUCCESS;
 }
 
-DEFUN (no_debug_ospf_te,
-       no_debug_ospf_te_cmd,
-       "no debug ospf te",
-       NO_STR
-       DEBUG_STR
-       OSPF_STR
-       "OSPF-TE information\n")
+DEFUN(debug_ospf_sr_vty, debug_ospf_sr_vty_cmd, "[no] debug ospf sr",
+      NO_STR DEBUG_STR OSPF_STR "OSPF-SR information\n")
 {
-	if (vty->node == CONFIG_NODE)
-		CONF_DEBUG_OFF(te, TE);
-	TERM_DEBUG_OFF(te, TE);
+	uint32_t flags = DEBUG_NODE2MODE(vty->node);
+	if (strmatch(argv[0]->text, "no"))
+		DEBUG_MODE_UNSET(&debug_ospf_sr, flags);
+	else
+		DEBUG_MODE_SET(&debug_ospf_sr, flags);
 	return CMD_SUCCESS;
 }
 
-DEFUN (debug_ospf_sr,
-       debug_ospf_sr_cmd,
-       "debug ospf sr",
-       DEBUG_STR
-       OSPF_STR
-       "OSPF-SR information\n")
+DEFUN(debug_ospf, debug_ospf_cmd, "[no] debug ospf", NO_STR DEBUG_STR OSPF_STR)
 {
-	if (vty->node == CONFIG_NODE)
-		CONF_DEBUG_ON(sr, SR);
-	TERM_DEBUG_ON(sr, SR);
-	return CMD_SUCCESS;
-}
-
-DEFUN (no_debug_ospf_sr,
-       no_debug_ospf_sr_cmd,
-       "no debug ospf sr",
-       NO_STR
-       DEBUG_STR
-       OSPF_STR
-       "OSPF-SR information\n")
-{
-	if (vty->node == CONFIG_NODE)
-		CONF_DEBUG_OFF(sr, SR);
-	TERM_DEBUG_OFF(sr, SR);
-	return CMD_SUCCESS;
-}
-
-DEFUN (no_debug_ospf,
-       no_debug_ospf_cmd,
-       "no debug ospf",
-       NO_STR
-       DEBUG_STR
-       OSPF_STR)
-{
-	int flag = OSPF_DEBUG_SEND | OSPF_DEBUG_RECV | OSPF_DEBUG_DETAIL;
-	int i;
-
-	if (vty->node == CONFIG_NODE) {
-		CONF_DEBUG_OFF(event, EVENT);
-		CONF_DEBUG_OFF(nssa, NSSA);
-		DEBUG_OFF(ism, ISM_EVENTS);
-		DEBUG_OFF(ism, ISM_STATUS);
-		DEBUG_OFF(ism, ISM_TIMERS);
-		DEBUG_OFF(lsa, LSA);
-		DEBUG_OFF(lsa, LSA_FLOODING);
-		DEBUG_OFF(lsa, LSA_GENERATE);
-		DEBUG_OFF(lsa, LSA_INSTALL);
-		DEBUG_OFF(lsa, LSA_REFRESH);
-		DEBUG_OFF(nsm, NSM);
-		DEBUG_OFF(nsm, NSM_EVENTS);
-		DEBUG_OFF(nsm, NSM_STATUS);
-		DEBUG_OFF(nsm, NSM_TIMERS);
-		DEBUG_OFF(zebra, ZEBRA);
-		DEBUG_OFF(zebra, ZEBRA_INTERFACE);
-		DEBUG_OFF(zebra, ZEBRA_REDISTRIBUTE);
-
-		for (i = 0; i < 5; i++)
-			DEBUG_PACKET_OFF(i, flag);
-	}
-
-	for (i = 0; i < 5; i++)
-		TERM_DEBUG_PACKET_OFF(i, flag);
-
-	TERM_DEBUG_OFF(event, EVENT);
-	TERM_DEBUG_OFF(ism, ISM);
-	TERM_DEBUG_OFF(ism, ISM_EVENTS);
-	TERM_DEBUG_OFF(ism, ISM_STATUS);
-	TERM_DEBUG_OFF(ism, ISM_TIMERS);
-	TERM_DEBUG_OFF(lsa, LSA);
-	TERM_DEBUG_OFF(lsa, LSA_FLOODING);
-	TERM_DEBUG_OFF(lsa, LSA_GENERATE);
-	TERM_DEBUG_OFF(lsa, LSA_INSTALL);
-	TERM_DEBUG_OFF(lsa, LSA_REFRESH);
-	TERM_DEBUG_OFF(nsm, NSM);
-	TERM_DEBUG_OFF(nsm, NSM_EVENTS);
-	TERM_DEBUG_OFF(nsm, NSM_STATUS);
-	TERM_DEBUG_OFF(nsm, NSM_TIMERS);
-	TERM_DEBUG_OFF(nssa, NSSA);
-	TERM_DEBUG_OFF(zebra, ZEBRA);
-	TERM_DEBUG_OFF(zebra, ZEBRA_INTERFACE);
-	TERM_DEBUG_OFF(zebra, ZEBRA_REDISTRIBUTE);
-
+	bool set = !strmatch(argv[0]->text, "no");
+	uint32_t mode = DEBUG_NODE2MODE(vty->node) | DEBUG_OPT_ALL;
+	ospf_debug_set_all(mode, set);
 	return CMD_SUCCESS;
 }
 
 static int show_debugging_ospf_common(struct vty *vty, struct ospf *ospf)
 {
 	int i;
+	uint32_t opt = 0;
 
 	if (ospf->instance)
 		vty_out(vty, "\nOSPF Instance: %d\n\n", ospf->instance);
@@ -1539,89 +1319,117 @@ static int show_debugging_ospf_common(struct vty *vty, struct ospf *ospf)
 	vty_out(vty, "OSPF debugging status:\n");
 
 	/* Show debug status for events. */
-	if (IS_DEBUG_OSPF(event, EVENT))
+	if (DEBUG(&debug_ospf_event))
 		vty_out(vty, "  OSPF event debugging is on\n");
 
 	/* Show debug status for ISM. */
-	if (IS_DEBUG_OSPF(ism, ISM) == OSPF_DEBUG_ISM)
-		vty_out(vty, "  OSPF ISM debugging is on\n");
-	else {
-		if (IS_DEBUG_OSPF(ism, ISM_STATUS))
-			vty_out(vty, "  OSPF ISM status debugging is on\n");
-		if (IS_DEBUG_OSPF(ism, ISM_EVENTS))
-			vty_out(vty, "  OSPF ISM event debugging is on\n");
-		if (IS_DEBUG_OSPF(ism, ISM_TIMERS))
-			vty_out(vty, "  OSPF ISM timer debugging is on\n");
+	if (DEBUG(&debug_ospf_ism)) {
+		opt = DEBUG_OPT_CHECK(&debug_ospf_ism, OSPF_DEBUG_ISM);
+		if (opt == OSPF_DEBUG_ISM)
+			vty_out(vty, "  OSPF ISM debugging is on\n");
+		else {
+			if (CHECK_FLAG(opt, OSPF_DEBUG_ISM_STATUS))
+				vty_out(vty,
+					"  OSPF ISM status debugging is on\n");
+			if (CHECK_FLAG(opt, OSPF_DEBUG_ISM_EVENTS))
+				vty_out(vty,
+					"  OSPF ISM event debugging is on\n");
+			else if (CHECK_FLAG(opt, OSPF_DEBUG_ISM_TIMERS))
+				vty_out(vty,
+					"  OSPF ISM timer debugging is on\n");
+		}
 	}
 
 	/* Show debug status for NSM. */
-	if (IS_DEBUG_OSPF(nsm, NSM) == OSPF_DEBUG_NSM)
-		vty_out(vty, "  OSPF NSM debugging is on\n");
-	else {
-		if (IS_DEBUG_OSPF(nsm, NSM_STATUS))
-			vty_out(vty, "  OSPF NSM status debugging is on\n");
-		if (IS_DEBUG_OSPF(nsm, NSM_EVENTS))
-			vty_out(vty, "  OSPF NSM event debugging is on\n");
-		if (IS_DEBUG_OSPF(nsm, NSM_TIMERS))
-			vty_out(vty, "  OSPF NSM timer debugging is on\n");
+	if (DEBUG(&debug_ospf_nsm)) {
+		opt = DEBUG_OPT_CHECK(&debug_ospf_nsm, OSPF_DEBUG_NSM);
+		if (opt == OSPF_DEBUG_NSM)
+			vty_out(vty, "  OSPF NSM debugging is on\n");
+		else {
+			if (CHECK_FLAG(opt, OSPF_DEBUG_NSM_STATUS))
+				vty_out(vty,
+					"  OSPF NSM status debugging is on\n");
+			if (CHECK_FLAG(opt, OSPF_DEBUG_NSM_EVENTS))
+				vty_out(vty,
+					"  OSPF NSM event debugging is on\n");
+			if (CHECK_FLAG(opt, OSPF_DEBUG_NSM_TIMERS))
+				vty_out(vty,
+					"  OSPF NSM timer debugging is on\n");
+		}
 	}
 
 	/* Show debug status for OSPF Packets. */
-	for (i = 0; i < 5; i++)
-		if (IS_DEBUG_OSPF_PACKET(i, SEND)
-		    && IS_DEBUG_OSPF_PACKET(i, RECV)) {
+	const char *detail = "";
+	for (i = 0; i < 5; i++) {
+		if (!DEBUG(&debug_ospf_packet[i]))
+			continue;
+
+		if (DEBUG_OPT_CHECK(&debug_ospf_packet[i], OSPF_DEBUG_DETAIL))
+			detail = "detail";
+		opt = OSPF_DEBUG_SEND_RECV;
+		switch (DEBUG_MODE_CHECK(&debug_ospf_packet[i], opt)) {
+		case OSPF_DEBUG_SEND_RECV:
 			vty_out(vty, "  OSPF packet %s%s debugging is on\n",
 				lookup_msg(ospf_packet_type_str, i + 1, NULL),
-				IS_DEBUG_OSPF_PACKET(i, DETAIL) ? " detail"
-								: "");
-		} else {
-			if (IS_DEBUG_OSPF_PACKET(i, SEND))
-				vty_out(vty,
-					"  OSPF packet %s send%s debugging is on\n",
-					lookup_msg(ospf_packet_type_str, i + 1,
-						   NULL),
-					IS_DEBUG_OSPF_PACKET(i, DETAIL)
-						? " detail"
-						: "");
-			if (IS_DEBUG_OSPF_PACKET(i, RECV))
-				vty_out(vty,
-					"  OSPF packet %s receive%s debugging is on\n",
-					lookup_msg(ospf_packet_type_str, i + 1,
-						   NULL),
-					IS_DEBUG_OSPF_PACKET(i, DETAIL)
-						? " detail"
-						: "");
+				detail);
+			break;
+		case OSPF_DEBUG_SEND:
+			vty_out(vty,
+				"  OSPF packet %s send%s debugging is on\n",
+				lookup_msg(ospf_packet_type_str, i + 1, NULL),
+				detail);
+			break;
+		case OSPF_DEBUG_RECV:
+			vty_out(vty,
+				"  OSPF packet %s receive%s debugging is on\n",
+				lookup_msg(ospf_packet_type_str, i + 1, NULL),
+				detail);
+			break;
 		}
+	}
 
 	/* Show debug status for OSPF LSAs. */
-	if (IS_DEBUG_OSPF(lsa, LSA) == OSPF_DEBUG_LSA)
-		vty_out(vty, "  OSPF LSA debugging is on\n");
-	else {
-		if (IS_DEBUG_OSPF(lsa, LSA_GENERATE))
-			vty_out(vty, "  OSPF LSA generation debugging is on\n");
-		if (IS_DEBUG_OSPF(lsa, LSA_FLOODING))
-			vty_out(vty, "  OSPF LSA flooding debugging is on\n");
-		if (IS_DEBUG_OSPF(lsa, LSA_INSTALL))
-			vty_out(vty, "  OSPF LSA install debugging is on\n");
-		if (IS_DEBUG_OSPF(lsa, LSA_REFRESH))
-			vty_out(vty, "  OSPF LSA refresh debugging is on\n");
+	if (DEBUG(&debug_ospf_lsa)) {
+		opt = DEBUG_OPT_CHECK(&debug_ospf_lsa, OSPF_DEBUG_LSA);
+		if (opt == OSPF_DEBUG_LSA)
+			vty_out(vty, "  OSPF LSA debugging is on\n");
+		else {
+			if (CHECK_FLAG(opt, OSPF_DEBUG_LSA_GENERATE))
+				vty_out(vty,
+					"  OSPF LSA generation debugging is on\n");
+			if (CHECK_FLAG(opt, OSPF_DEBUG_LSA_FLOODING))
+				vty_out(vty,
+					"  OSPF LSA flooding debugging is on\n");
+			if (CHECK_FLAG(opt, OSPF_DEBUG_LSA_INSTALL))
+				vty_out(vty,
+					"  OSPF LSA install debugging is on\n");
+			if (CHECK_FLAG(opt, OSPF_DEBUG_LSA_REFRESH))
+				vty_out(vty,
+					"  OSPF LSA refresh debugging is on\n");
+		}
 	}
 
 	/* Show debug status for Zebra. */
-	if (IS_DEBUG_OSPF(zebra, ZEBRA) == OSPF_DEBUG_ZEBRA)
-		vty_out(vty, "  OSPF Zebra debugging is on\n");
-	else {
-		if (IS_DEBUG_OSPF(zebra, ZEBRA_INTERFACE))
-			vty_out(vty,
-				"  OSPF Zebra interface debugging is on\n");
-		if (IS_DEBUG_OSPF(zebra, ZEBRA_REDISTRIBUTE))
-			vty_out(vty,
-				"  OSPF Zebra redistribute debugging is on\n");
+	if (DEBUG(&debug_ospf_zebra)) {
+		opt = DEBUG_OPT_CHECK(&debug_ospf_zebra, OSPF_DEBUG_ZEBRA);
+		if (opt == OSPF_DEBUG_ZEBRA)
+			vty_out(vty, "  OSPF Zebra debugging is on\n");
+		else {
+			if (CHECK_FLAG(opt, OSPF_DEBUG_ZEBRA_INTERFACE))
+				vty_out(vty,
+					"  OSPF Zebra interface debugging is on\n");
+			if (CHECK_FLAG(opt, OSPF_DEBUG_ZEBRA_REDISTRIBUTE))
+				vty_out(vty,
+					"  OSPF Zebra redistribute debugging is on\n");
+		}
 	}
 
 	/* Show debug status for NSSA. */
-	if (IS_DEBUG_OSPF(nssa, NSSA) == OSPF_DEBUG_NSSA)
-		vty_out(vty, "  OSPF NSSA debugging is on\n");
+	if (DEBUG(&debug_ospf_nssa)) {
+		if (DEBUG_OPT_CHECK(&debug_ospf_nssa, OSPF_DEBUG_NSSA)
+		    == OSPF_DEBUG_NSSA)
+			vty_out(vty, "  OSPF NSSA debugging is on\n");
+	}
 
 	vty_out(vty, "\n");
 
@@ -1671,7 +1479,7 @@ static struct cmd_node debug_node = {
 static int config_write_debug(struct vty *vty)
 {
 	int write = 0;
-	int i, r;
+	uint32_t omode, smode;
 
 	const char *type_str[] = {"hello", "dd", "ls-request", "ls-update",
 				  "ls-ack"};
@@ -1691,111 +1499,152 @@ static int config_write_debug(struct vty *vty)
 		sprintf(str, " %d", ospf->instance);
 
 	/* debug ospf ism (status|events|timers). */
-	if (IS_CONF_DEBUG_OSPF(ism, ISM) == OSPF_DEBUG_ISM)
-		vty_out(vty, "debug ospf%s ism\n", str);
-	else {
-		if (IS_CONF_DEBUG_OSPF(ism, ISM_STATUS))
-			vty_out(vty, "debug ospf%s ism status\n", str);
-		if (IS_CONF_DEBUG_OSPF(ism, ISM_EVENTS))
-			vty_out(vty, "debug ospf%s ism event\n", str);
-		if (IS_CONF_DEBUG_OSPF(ism, ISM_TIMERS))
-			vty_out(vty, "debug ospf%s ism timer\n", str);
+	if (DEBUG_MODE_CHECK(&debug_ospf_ism, DEBUG_MODE_CONF)) {
+		if (DEBUG_OPT_CHECK(&debug_ospf_ism, OSPF_DEBUG_ISM))
+			vty_out(vty, "debug ospf%s ism\n", str);
+		else {
+			if (DEBUG_OPT_CHECK(&debug_ospf_ism,
+					    OSPF_DEBUG_ISM_STATUS))
+				vty_out(vty, "debug ospf%s ism status\n", str);
+			if (DEBUG_OPT_CHECK(&debug_ospf_ism,
+					    OSPF_DEBUG_ISM_EVENTS))
+				vty_out(vty, "debug ospf%s ism event\n", str);
+			if (DEBUG_OPT_CHECK(&debug_ospf_ism,
+					    OSPF_DEBUG_ISM_TIMERS))
+				vty_out(vty, "debug ospf%s ism timer\n", str);
+		}
 	}
 
 	/* debug ospf nsm (status|events|timers). */
-	if (IS_CONF_DEBUG_OSPF(nsm, NSM) == OSPF_DEBUG_NSM)
-		vty_out(vty, "debug ospf%s nsm\n", str);
-	else {
-		if (IS_CONF_DEBUG_OSPF(nsm, NSM_STATUS))
-			vty_out(vty, "debug ospf%s nsm status\n", str);
-		if (IS_CONF_DEBUG_OSPF(nsm, NSM_EVENTS))
-			vty_out(vty, "debug ospf%s nsm event\n", str);
-		if (IS_CONF_DEBUG_OSPF(nsm, NSM_TIMERS))
-			vty_out(vty, "debug ospf%s nsm timer\n", str);
+	if (DEBUG_MODE_CHECK(&debug_ospf_nsm, DEBUG_MODE_CONF)) {
+		if (DEBUG_OPT_CHECK(&debug_ospf_nsm, OSPF_DEBUG_NSM)
+		    == OSPF_DEBUG_NSM)
+			vty_out(vty, "debug ospf%s nsm\n", str);
+		else {
+			if (DEBUG_OPT_CHECK(&debug_ospf_nsm,
+					    OSPF_DEBUG_NSM_STATUS))
+				vty_out(vty, "debug ospf%s nsm status\n", str);
+			if (DEBUG_OPT_CHECK(&debug_ospf_nsm,
+					    OSPF_DEBUG_NSM_EVENTS))
+				vty_out(vty, "debug ospf%s nsm event\n", str);
+			if (DEBUG_OPT_CHECK(&debug_ospf_nsm,
+					    OSPF_DEBUG_NSM_TIMERS))
+				vty_out(vty, "debug ospf%s nsm timer\n", str);
+		}
 	}
 
 	/* debug ospf lsa (generate|flooding|install|refresh). */
-	if (IS_CONF_DEBUG_OSPF(lsa, LSA) == OSPF_DEBUG_LSA)
-		vty_out(vty, "debug ospf%s lsa\n", str);
-	else {
-		if (IS_CONF_DEBUG_OSPF(lsa, LSA_GENERATE))
-			vty_out(vty, "debug ospf%s lsa generate\n", str);
-		if (IS_CONF_DEBUG_OSPF(lsa, LSA_FLOODING))
-			vty_out(vty, "debug ospf%s lsa flooding\n", str);
-		if (IS_CONF_DEBUG_OSPF(lsa, LSA_INSTALL))
-			vty_out(vty, "debug ospf%s lsa install\n", str);
-		if (IS_CONF_DEBUG_OSPF(lsa, LSA_REFRESH))
-			vty_out(vty, "debug ospf%s lsa refresh\n", str);
+	if (DEBUG_MODE_CHECK(&debug_ospf_lsa, DEBUG_MODE_CONF)) {
+		if (DEBUG_OPT_CHECK(&debug_ospf_lsa, OSPF_DEBUG_LSA)
+		    == OSPF_DEBUG_LSA)
+			vty_out(vty, "debug ospf%s lsa\n", str);
+		else {
+			if (DEBUG_OPT_CHECK(&debug_ospf_lsa,
+					    OSPF_DEBUG_LSA_GENERATE))
+				vty_out(vty, "debug ospf%s lsa generate\n",
+					str);
+			if (DEBUG_OPT_CHECK(&debug_ospf_lsa,
+					    OSPF_DEBUG_LSA_FLOODING))
+				vty_out(vty, "debug ospf%s lsa flooding\n",
+					str);
+			if (DEBUG_OPT_CHECK(&debug_ospf_lsa,
+					    OSPF_DEBUG_LSA_INSTALL))
+				vty_out(vty, "debug ospf%s lsa install\n", str);
+			if (DEBUG_OPT_CHECK(&debug_ospf_lsa,
+					    OSPF_DEBUG_LSA_REFRESH))
+				vty_out(vty, "debug ospf%s lsa refresh\n", str);
+		}
 
 		write = 1;
 	}
 
 	/* debug ospf zebra (interface|redistribute). */
-	if (IS_CONF_DEBUG_OSPF(zebra, ZEBRA) == OSPF_DEBUG_ZEBRA)
-		vty_out(vty, "debug ospf%s zebra\n", str);
-	else {
-		if (IS_CONF_DEBUG_OSPF(zebra, ZEBRA_INTERFACE))
-			vty_out(vty, "debug ospf%s zebra interface\n", str);
-		if (IS_CONF_DEBUG_OSPF(zebra, ZEBRA_REDISTRIBUTE))
-			vty_out(vty, "debug ospf%s zebra redistribute\n", str);
+	if (DEBUG_MODE_CHECK(&debug_ospf_zebra, DEBUG_MODE_CONF)) {
+		if (DEBUG_OPT_CHECK(&debug_ospf_zebra, OSPF_DEBUG_ZEBRA)
+		    == OSPF_DEBUG_ZEBRA)
+			vty_out(vty, "debug ospf%s zebra\n", str);
+		else {
+			if (DEBUG_OPT_CHECK(&debug_ospf_zebra,
+					    OSPF_DEBUG_ZEBRA_INTERFACE))
+				vty_out(vty, "debug ospf%s zebra interface\n",
+					str);
+			if (DEBUG_OPT_CHECK(&debug_ospf_zebra,
+					    OSPF_DEBUG_ZEBRA_REDISTRIBUTE))
+				vty_out(vty,
+					"debug ospf%s zebra redistribute\n",
+					str);
+		}
 
 		write = 1;
 	}
 
 	/* debug ospf event. */
-	if (IS_CONF_DEBUG_OSPF(event, EVENT) == OSPF_DEBUG_EVENT) {
+	if (DEBUG_MODE_CHECK(&debug_ospf_event, DEBUG_MODE_CONF)
+	    && DEBUG_OPT_CHECK(&debug_ospf_event, OSPF_DEBUG_EVENT)) {
 		vty_out(vty, "debug ospf%s event\n", str);
 		write = 1;
 	}
 
 	/* debug ospf nssa. */
-	if (IS_CONF_DEBUG_OSPF(nssa, NSSA) == OSPF_DEBUG_NSSA) {
+	if (DEBUG_MODE_CHECK(&debug_ospf_nssa, DEBUG_MODE_CONF)
+	    && DEBUG_OPT_CHECK(&debug_ospf_nssa, OSPF_DEBUG_NSSA)) {
 		vty_out(vty, "debug ospf%s nssa\n", str);
 		write = 1;
 	}
 
 	/* debug ospf packet all detail. */
-	r = OSPF_DEBUG_SEND_RECV | OSPF_DEBUG_DETAIL;
-	for (i = 0; i < 5; i++)
-		r &= conf_debug_ospf_packet[i]
-		     & (OSPF_DEBUG_SEND_RECV | OSPF_DEBUG_DETAIL);
-	if (r == (OSPF_DEBUG_SEND_RECV | OSPF_DEBUG_DETAIL)) {
+	omode = smode =
+		DEBUG_MODE_CONF | OSPF_DEBUG_SEND_RECV | OSPF_DEBUG_DETAIL;
+	for (int i = 0; i < 5; i++)
+		smode &= DEBUG_FLAGS_CHECK(&debug_ospf_packet[i], omode);
+	if (omode == smode) {
 		vty_out(vty, "debug ospf%s packet all detail\n", str);
 		return 1;
 	}
 
 	/* debug ospf packet all. */
-	r = OSPF_DEBUG_SEND_RECV;
-	for (i = 0; i < 5; i++)
-		r &= conf_debug_ospf_packet[i] & OSPF_DEBUG_SEND_RECV;
-	if (r == OSPF_DEBUG_SEND_RECV) {
-		vty_out(vty, "debug ospf%s packet all\n", str);
-		for (i = 0; i < 5; i++)
-			if (conf_debug_ospf_packet[i] & OSPF_DEBUG_DETAIL)
+
+	for (int i = 0; i < 5; i++) {
+		smode &= DEBUG_FLAGS_CHECK(&debug_ospf_packet[i], omode);
+		if (smode == omode) {
+			vty_out(vty, "debug ospf%s packet all\n", str);
+			omode = smode = DEBUG_MODE_CONF | OSPF_DEBUG_DETAIL;
+			for (int i = 0; i < 5; i++)
+				smode &= DEBUG_FLAGS_CHECK(
+					&debug_ospf_packet[i], omode);
+			if (smode == omode)
 				vty_out(vty, "debug ospf%s packet %s detail\n",
 					str, type_str[i]);
-		return 1;
+			return 1;
+		}
 	}
 
-	/* debug ospf packet (hello|dd|ls-request|ls-update|ls-ack)
-	   (send|recv) (detail). */
-	for (i = 0; i < 5; i++) {
-		if (conf_debug_ospf_packet[i] == 0)
-			continue;
-
-		vty_out(vty, "debug ospf%s packet %s%s\n", str, type_str[i],
-			detail_str[conf_debug_ospf_packet[i]]);
-		write = 1;
+	/*
+	 * debug ospf packet <hello|dd|ls-request|ls-update|ls-ack> <send|recv>
+	 * <detail>.
+	 */
+	for (int i = 0; i < 5; i++) {
+		if (DEBUG_MODE_CHECK(&debug_ospf_packet[i], DEBUG_MODE_CONF)) {
+			int idx = DEBUG_MODE_CHECK(&debug_ospf_packet[i],
+						   ~DEBUG_MODE_ALL);
+			vty_out(vty, "debug ospf%s packet %s%s\n", str,
+				type_str[i], detail_str[idx]);
+			write = 1;
+		}
 	}
 
 	/* debug ospf te */
-	if (IS_CONF_DEBUG_OSPF(te, TE) == OSPF_DEBUG_TE) {
+	if (DEBUG_MODE_CHECK(&debug_ospf_te, DEBUG_MODE_CONF)
+	    && (DEBUG_OPT_CHECK(&debug_ospf_te, OSPF_DEBUG_TE)
+		== OSPF_DEBUG_TE)) {
 		vty_out(vty, "debug ospf%s te\n", str);
 		write = 1;
 	}
 
 	/* debug ospf sr */
-	if (IS_CONF_DEBUG_OSPF(sr, SR) == OSPF_DEBUG_SR) {
+	if (DEBUG_MODE_CHECK(&debug_ospf_te, DEBUG_MODE_CONF)
+	    && (DEBUG_OPT_CHECK(&debug_ospf_sr, OSPF_DEBUG_SR)
+		== OSPF_DEBUG_SR)) {
 		vty_out(vty, "debug ospf%s sr\n", str);
 		write = 1;
 	}
@@ -1804,30 +1653,29 @@ static int config_write_debug(struct vty *vty)
 }
 
 /* Initialize debug commands. */
-void debug_init()
+void ospf_debug_init()
 {
 	install_node(&debug_node, config_write_debug);
 
+	struct debug_callbacks dcb = {.debug_set_all = ospf_debug_set_all};
+	debug_init(&dcb);
+
 	install_element(ENABLE_NODE, &show_debugging_ospf_cmd);
-	install_element(ENABLE_NODE, &debug_ospf_ism_cmd);
-	install_element(ENABLE_NODE, &debug_ospf_nsm_cmd);
-	install_element(ENABLE_NODE, &debug_ospf_lsa_cmd);
-	install_element(ENABLE_NODE, &debug_ospf_zebra_cmd);
-	install_element(ENABLE_NODE, &debug_ospf_event_cmd);
-	install_element(ENABLE_NODE, &debug_ospf_nssa_cmd);
-	install_element(ENABLE_NODE, &debug_ospf_te_cmd);
-	install_element(ENABLE_NODE, &debug_ospf_sr_cmd);
+	install_element(ENABLE_NODE, &debug_ospf_ism_vty_cmd);
+	install_element(ENABLE_NODE, &debug_ospf_nsm_vty_cmd);
+	install_element(ENABLE_NODE, &debug_ospf_lsa_vty_cmd);
+	install_element(ENABLE_NODE, &debug_ospf_zebra_vty_cmd);
+	install_element(ENABLE_NODE, &debug_ospf_event_vty_cmd);
+	install_element(ENABLE_NODE, &debug_ospf_nssa_vty_cmd);
+	install_element(ENABLE_NODE, &debug_ospf_te_vty_cmd);
+	install_element(ENABLE_NODE, &debug_ospf_sr_vty_cmd);
 	install_element(ENABLE_NODE, &no_debug_ospf_ism_cmd);
 	install_element(ENABLE_NODE, &no_debug_ospf_nsm_cmd);
 	install_element(ENABLE_NODE, &no_debug_ospf_lsa_cmd);
 	install_element(ENABLE_NODE, &no_debug_ospf_zebra_cmd);
-	install_element(ENABLE_NODE, &no_debug_ospf_event_cmd);
-	install_element(ENABLE_NODE, &no_debug_ospf_nssa_cmd);
-	install_element(ENABLE_NODE, &no_debug_ospf_te_cmd);
-	install_element(ENABLE_NODE, &no_debug_ospf_sr_cmd);
 
 	install_element(ENABLE_NODE, &show_debugging_ospf_instance_cmd);
-	install_element(ENABLE_NODE, &debug_ospf_packet_cmd);
+	install_element(ENABLE_NODE, &debug_ospf_packet_vty_cmd);
 	install_element(ENABLE_NODE, &no_debug_ospf_packet_cmd);
 
 	install_element(ENABLE_NODE, &debug_ospf_instance_nsm_cmd);
@@ -1840,27 +1688,23 @@ void debug_init()
 	install_element(ENABLE_NODE, &no_debug_ospf_instance_zebra_cmd);
 	install_element(ENABLE_NODE, &no_debug_ospf_instance_event_cmd);
 	install_element(ENABLE_NODE, &no_debug_ospf_instance_nssa_cmd);
-	install_element(ENABLE_NODE, &no_debug_ospf_cmd);
+	install_element(ENABLE_NODE, &debug_ospf_cmd);
 
-	install_element(CONFIG_NODE, &debug_ospf_packet_cmd);
+	install_element(CONFIG_NODE, &debug_ospf_packet_vty_cmd);
 	install_element(CONFIG_NODE, &no_debug_ospf_packet_cmd);
-	install_element(CONFIG_NODE, &debug_ospf_ism_cmd);
+	install_element(CONFIG_NODE, &debug_ospf_ism_vty_cmd);
 	install_element(CONFIG_NODE, &no_debug_ospf_ism_cmd);
 
-	install_element(CONFIG_NODE, &debug_ospf_nsm_cmd);
-	install_element(CONFIG_NODE, &debug_ospf_lsa_cmd);
-	install_element(CONFIG_NODE, &debug_ospf_zebra_cmd);
-	install_element(CONFIG_NODE, &debug_ospf_event_cmd);
-	install_element(CONFIG_NODE, &debug_ospf_nssa_cmd);
-	install_element(CONFIG_NODE, &debug_ospf_te_cmd);
-	install_element(CONFIG_NODE, &debug_ospf_sr_cmd);
+	install_element(CONFIG_NODE, &debug_ospf_nsm_vty_cmd);
+	install_element(CONFIG_NODE, &debug_ospf_lsa_vty_cmd);
+	install_element(CONFIG_NODE, &debug_ospf_zebra_vty_cmd);
+	install_element(CONFIG_NODE, &debug_ospf_event_vty_cmd);
+	install_element(CONFIG_NODE, &debug_ospf_nssa_vty_cmd);
+	install_element(CONFIG_NODE, &debug_ospf_te_vty_cmd);
+	install_element(CONFIG_NODE, &debug_ospf_sr_vty_cmd);
 	install_element(CONFIG_NODE, &no_debug_ospf_nsm_cmd);
 	install_element(CONFIG_NODE, &no_debug_ospf_lsa_cmd);
 	install_element(CONFIG_NODE, &no_debug_ospf_zebra_cmd);
-	install_element(CONFIG_NODE, &no_debug_ospf_event_cmd);
-	install_element(CONFIG_NODE, &no_debug_ospf_nssa_cmd);
-	install_element(CONFIG_NODE, &no_debug_ospf_te_cmd);
-	install_element(CONFIG_NODE, &no_debug_ospf_sr_cmd);
 
 	install_element(CONFIG_NODE, &debug_ospf_instance_nsm_cmd);
 	install_element(CONFIG_NODE, &debug_ospf_instance_lsa_cmd);
@@ -1872,5 +1716,5 @@ void debug_init()
 	install_element(CONFIG_NODE, &no_debug_ospf_instance_zebra_cmd);
 	install_element(CONFIG_NODE, &no_debug_ospf_instance_event_cmd);
 	install_element(CONFIG_NODE, &no_debug_ospf_instance_nssa_cmd);
-	install_element(CONFIG_NODE, &no_debug_ospf_cmd);
+	install_element(CONFIG_NODE, &debug_ospf_cmd);
 }

@@ -18,9 +18,10 @@
  * with this program; see the file COPYING; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
  */
-
 #ifndef _ZEBRA_OSPF_DUMP_H
 #define _ZEBRA_OSPF_DUMP_H
+
+#include "debug.h"
 
 /* Debug Flags. */
 #define OSPF_DEBUG_HELLO	0x01
@@ -60,53 +61,17 @@
 #define OSPF_DEBUG_EXT         0x08
 #define OSPF_DEBUG_SR          0x10
 
-/* Macro for setting debug option. */
-#define CONF_DEBUG_PACKET_ON(a, b)	    conf_debug_ospf_packet[a] |= (b)
-#define CONF_DEBUG_PACKET_OFF(a, b)	    conf_debug_ospf_packet[a] &= ~(b)
-#define TERM_DEBUG_PACKET_ON(a, b)	    term_debug_ospf_packet[a] |= (b)
-#define TERM_DEBUG_PACKET_OFF(a, b)	    term_debug_ospf_packet[a] &= ~(b)
-#define DEBUG_PACKET_ON(a, b)                                                  \
-	do {                                                                   \
-		CONF_DEBUG_PACKET_ON(a, b);                                    \
-		TERM_DEBUG_PACKET_ON(a, b);                                    \
-	} while (0)
-#define DEBUG_PACKET_OFF(a, b)                                                 \
-	do {                                                                   \
-		CONF_DEBUG_PACKET_OFF(a, b);                                   \
-		TERM_DEBUG_PACKET_OFF(a, b);                                   \
-	} while (0)
-
-#define CONF_DEBUG_ON(a, b)	 conf_debug_ospf_ ## a |= (OSPF_DEBUG_ ## b)
-#define CONF_DEBUG_OFF(a, b)	 conf_debug_ospf_ ## a &= ~(OSPF_DEBUG_ ## b)
-#define TERM_DEBUG_ON(a, b)	 term_debug_ospf_ ## a |= (OSPF_DEBUG_ ## b)
-#define TERM_DEBUG_OFF(a, b)	 term_debug_ospf_ ## a &= ~(OSPF_DEBUG_ ## b)
-#define DEBUG_ON(a, b)                                                         \
-	do {                                                                   \
-		CONF_DEBUG_ON(a, b);                                           \
-		TERM_DEBUG_ON(a, b);                                           \
-	} while (0)
-#define DEBUG_OFF(a, b)                                                        \
-	do {                                                                   \
-		CONF_DEBUG_OFF(a, b);                                          \
-		TERM_DEBUG_OFF(a, b);                                          \
-	} while (0)
-
 /* Macro for checking debug option. */
-#define IS_DEBUG_OSPF_PACKET(a, b) (term_debug_ospf_packet[a] & OSPF_DEBUG_##b)
-#define IS_DEBUG_OSPF(a, b) (term_debug_ospf_##a & OSPF_DEBUG_##b)
+#define IS_DEBUG_OSPF_PACKET(a, b)                                             \
+	DEBUG_MODE_CHECK(&debug_ospf_packet[a], OSPF_DEBUG_##b)
+#define IS_DEBUG_OSPF(a, b)                                                    \
+	(DEBUG_MODE_CHECK(&debug_ospf_##a, DEBUG_MODE_TERM)                    \
+	 & DEBUG_MODE_CHECK(&debug_ospf_##a, OSPF_DEBUG_##b))
 #define IS_DEBUG_OSPF_EVENT IS_DEBUG_OSPF(event, EVENT)
-
-#define IS_DEBUG_OSPF_NSSA  IS_DEBUG_OSPF(nssa, NSSA)
-
-#define IS_DEBUG_OSPF_TE  IS_DEBUG_OSPF(te, TE)
-
-#define IS_DEBUG_OSPF_EXT  IS_DEBUG_OSPF(ext, EXT)
-
-#define IS_DEBUG_OSPF_SR  IS_DEBUG_OSPF(sr, SR)
-
-#define IS_CONF_DEBUG_OSPF_PACKET(a, b)                                        \
-	(conf_debug_ospf_packet[a] & OSPF_DEBUG_##b)
-#define IS_CONF_DEBUG_OSPF(a, b) (conf_debug_ospf_##a & OSPF_DEBUG_##b)
+#define IS_DEBUG_OSPF_NSSA IS_DEBUG_OSPF(nssa, NSSA)
+#define IS_DEBUG_OSPF_TE IS_DEBUG_OSPF(te, TE)
+#define IS_DEBUG_OSPF_EXT IS_DEBUG_OSPF(ext, EXT)
+#define IS_DEBUG_OSPF_SR IS_DEBUG_OSPF(sr, SR)
 
 #ifdef ORIGINAL_CODING
 #else  /* ORIGINAL_CODING */
@@ -116,17 +81,18 @@ struct stream;
 #define AREA_NAME(A)    ospf_area_name_string ((A))
 #define IF_NAME(I)      ospf_if_name_string ((I))
 
-/* Extern debug flag. */
-extern unsigned long term_debug_ospf_packet[];
-extern unsigned long term_debug_ospf_event;
-extern unsigned long term_debug_ospf_ism;
-extern unsigned long term_debug_ospf_nsm;
-extern unsigned long term_debug_ospf_lsa;
-extern unsigned long term_debug_ospf_zebra;
-extern unsigned long term_debug_ospf_nssa;
-extern unsigned long term_debug_ospf_te;
-extern unsigned long term_debug_ospf_ext;
-extern unsigned long term_debug_ospf_sr;
+
+/* Extern debug records. */
+extern struct debug debug_ospf_packet[5];
+extern struct debug debug_ospf_event;
+extern struct debug debug_ospf_ism;
+extern struct debug debug_ospf_nsm;
+extern struct debug debug_ospf_lsa;
+extern struct debug debug_ospf_zebra;
+extern struct debug debug_ospf_nssa;
+extern struct debug debug_ospf_te;
+extern struct debug debug_ospf_ext;
+extern struct debug debug_ospf_sr;
 
 /* Message Strings. */
 extern char *ospf_lsa_type_str[];
@@ -140,7 +106,7 @@ extern const char *ospf_timer_dump(struct thread *, char *, size_t);
 extern const char *ospf_timeval_dump(struct timeval *, char *, size_t);
 extern void ospf_ip_header_dump(struct ip *);
 extern void ospf_packet_dump(struct stream *);
-extern void debug_init(void);
+extern void ospf_debug_init(void);
 
 /* Appropriate buffer size to use with ospf_timer_dump and ospf_timeval_dump: */
 #define OSPF_TIME_DUMP_SIZE	16
