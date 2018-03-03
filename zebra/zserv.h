@@ -43,12 +43,21 @@
 
 /* Client structure. */
 struct zserv {
+	/* Client pthread */
+	struct frr_pthread *pthread;
+
 	/* Client file descriptor. */
 	int sock;
 
 	/* Input/output buffer to the client. */
-	struct stream *ibuf;
-	struct stream *obuf;
+	pthread_mutex_t ibuf_mtx;
+	struct stream_fifo *ibuf_fifo;
+	pthread_mutex_t obuf_mtx;
+	struct stream_fifo *obuf_fifo;
+
+	/* Private I/O buffers */
+	struct stream *ibuf_work;
+	struct stream *obuf_work;
 
 	/* Buffer of data waiting to be written to client. */
 	struct buffer *wb;
@@ -129,11 +138,23 @@ struct zserv {
 	int last_write_cmd;
 };
 
+/* ZAPI protocol structs */
+struct zmsghdr {
+	uint16_t length;
+	uint8_t marker;
+	uint8_t version;
+	uint32_t vrf_id;
+	uint16_t command;
+};
+
+#define ZAPI_HANDLER_ARGS                                                      \
+	struct zserv *client, struct zmsghdr *hdr, struct stream *msg,         \
+		struct zebra_vrf *zvrf
+
+#define ZSERV_PTHR_ID 1
+
 /* Zebra instance */
 struct zebra_t {
-	#define ZSERV_PTHR_ID 1
-	struct frr_pthread *zserv_pthr;
-
 	/* Thread master */
 	struct thread_master *master;
 	struct list *client_list;
@@ -185,7 +206,8 @@ extern int zsend_route_notify_owner(u_char proto, u_short instance,
 
 extern void zserv_nexthop_num_warn(const char *, const struct prefix *,
 				   const unsigned int);
-extern int zebra_server_send_message(struct zserv *client);
+extern int zebra_server_send_message(struct zserv *client, struct stream *msg);
+extern struct stream *zebra_client_get_message(struct zserv *client);
 
 extern struct zserv *zebra_find_client(u_char proto, u_short instance);
 

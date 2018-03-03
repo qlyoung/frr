@@ -365,8 +365,6 @@ int main(int argc, char **argv)
 	/* Init label manager */
 	label_manager_init(lblmgr_path);
 
-	frr_pthread_run(zebrad.zserv_pthr, NULL);
-	frr_pthread_wait_running(zebrad.zserv_pthr);
 	frr_run(zebrad.master);
 
 	/* Not reached... */

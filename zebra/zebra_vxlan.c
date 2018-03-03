@@ -1178,8 +1178,7 @@ static int zvni_macip_send_msg_to_client(vni_t vni,
 	if (!client)
 		return 0;
 
-	s = client->obuf;
-	stream_reset(s);
+	s = stream_new(ZEBRA_MAX_PACKET_SIZ);
 
 	zclient_create_header(s, cmd, VRF_DEFAULT);
 	stream_putl(s, vni);
@@ -1216,7 +1215,7 @@ static int zvni_macip_send_msg_to_client(vni_t vni,
 	else
 		client->macipdel_cnt++;
 
-	return zebra_server_send_message(client);
+	return zebra_server_send_message(client, s);
 }
 
 /*
@@ -2598,8 +2597,7 @@ static int zvni_send_add_to_client(zebra_vni_t *zvni)
 	if (!client)
 		return 0;
 
-	s = client->obuf;
-	stream_reset(s);
+	s = stream_new(ZEBRA_MAX_PACKET_SIZ);
 
 	zclient_create_header(s, ZEBRA_VNI_ADD, VRF_DEFAULT);
 	stream_putl(s, zvni->vni);
@@ -2616,7 +2614,7 @@ static int zvni_send_add_to_client(zebra_vni_t *zvni)
 			   zebra_route_string(client->proto));
 
 	client->vniadd_cnt++;
-	return zebra_server_send_message(client);
+	return zebra_server_send_message(client, s);
 }
 
 /*
@@ -2632,7 +2630,7 @@ static int zvni_send_del_to_client(vni_t vni)
 	if (!client)
 		return 0;
 
-	s = client->obuf;
+	s = stream_new(ZEBRA_MAX_PACKET_SIZ);
 	stream_reset(s);
 
 	zclient_create_header(s, ZEBRA_VNI_DEL, VRF_DEFAULT);
@@ -2646,7 +2644,7 @@ static int zvni_send_del_to_client(vni_t vni)
 			   zebra_route_string(client->proto));
 
 	client->vnidel_cnt++;
-	return zebra_server_send_message(client);
+	return zebra_server_send_message(client, s);
 }
 
 /*
@@ -3605,8 +3603,7 @@ static int zl3vni_send_add_to_client(zebra_l3vni_t *zl3vni)
 	memset(&rmac, 0, sizeof(struct ethaddr));
 	zl3vni_get_rmac(zl3vni, &rmac);
 
-	s = client->obuf;
-	stream_reset(s);
+	s = stream_new(ZEBRA_MAX_PACKET_SIZ);
 
 	zclient_create_header(s, ZEBRA_L3VNI_ADD,
 			    zl3vni_vrf_id(zl3vni));
@@ -3625,7 +3622,7 @@ static int zl3vni_send_add_to_client(zebra_l3vni_t *zl3vni)
 			   zebra_route_string(client->proto));
 
 	client->l3vniadd_cnt++;
-	return zebra_server_send_message(client);
+	return zebra_server_send_message(client, s);
 }
 
 /*
@@ -3641,8 +3638,7 @@ static int zl3vni_send_del_to_client(zebra_l3vni_t *zl3vni)
 	if (!client)
 		return 0;
 
-	s = client->obuf;
-	stream_reset(s);
+	s = stream_new(ZEBRA_MAX_PACKET_SIZ);
 
 	zclient_create_header(s, ZEBRA_L3VNI_DEL,
 			    zl3vni_vrf_id(zl3vni));
@@ -3658,7 +3654,7 @@ static int zl3vni_send_del_to_client(zebra_l3vni_t *zl3vni)
 			   zebra_route_string(client->proto));
 
 	client->l3vnidel_cnt++;
-	return zebra_server_send_message(client);
+	return zebra_server_send_message(client, s);
 }
 
 static void zebra_vxlan_process_l3vni_oper_up(zebra_l3vni_t *zl3vni)
@@ -3789,8 +3785,7 @@ static int ip_prefix_send_to_client(vrf_id_t vrf_id,
 	if (!client)
 		return 0;
 
-	s = client->obuf;
-	stream_reset(s);
+	s = stream_new(ZEBRA_MAX_PACKET_SIZ);
 
 	zclient_create_header(s, cmd, vrf_id);
 	stream_put(s, p, sizeof(struct prefix));
@@ -3810,7 +3805,7 @@ static int ip_prefix_send_to_client(vrf_id_t vrf_id,
 	else
 		client->prefixdel_cnt++;
 
-	return zebra_server_send_message(client);
+	return zebra_server_send_message(client, s);
 }
 
 /* re-add remote rmac if needed */
@@ -4939,8 +4934,7 @@ int zebra_vxlan_local_neigh_add_update(struct interface *ifp,
 /*
  * Handle message from client to delete a remote MACIP for a VNI.
  */
-int zebra_vxlan_remote_macip_del(struct zserv *client, u_short length,
-				 struct zebra_vrf *zvrf)
+void zebra_vxlan_remote_macip_del(ZAPI_HANDLER_ARGS)
 {
 	struct stream *s;
 	vni_t vni;
@@ -4960,9 +4954,9 @@ int zebra_vxlan_remote_macip_del(struct zserv *client, u_short length,
 	memset(&ip, 0, sizeof(struct ipaddr));
 	memset(&vtep_ip, 0, sizeof(struct in_addr));
 
-	s = client->ibuf;
+	s = msg;
 
-	while (l < length) {
+	while (l < hdr->length) {
 		/* Obtain each remote MACIP and process. */
 		/* Message contains VNI, followed by MAC followed by IP (if any)
 		 * followed by remote VTEP IP.
@@ -5087,7 +5081,7 @@ int zebra_vxlan_remote_macip_del(struct zserv *client, u_short length,
 	}
 
 stream_failure:
-	return 0;
+	return;
 }
 
 /*
@@ -5095,8 +5089,7 @@ stream_failure:
  * could be just the add of a MAC address or the add of a neighbor
  * (IP+MAC).
  */
-int zebra_vxlan_remote_macip_add(struct zserv *client, u_short length,
-				 struct zebra_vrf *zvrf)
+void zebra_vxlan_remote_macip_add(ZAPI_HANDLER_ARGS)
 {
 	struct stream *s;
 	vni_t vni;
@@ -5123,12 +5116,12 @@ int zebra_vxlan_remote_macip_add(struct zserv *client, u_short length,
 	if (!EVPN_ENABLED(zvrf)) {
 		zlog_warn("%s: EVPN Not turned on yet we have received a remote_macip add zapi callback",
 			  __PRETTY_FUNCTION__);
-		return -1;
+		return;
 	}
 
-	s = client->ibuf;
+	s = msg;
 
-	while (l < length) {
+	while (l < hdr->length) {
 		/* Obtain each remote MACIP and process. */
 		/* Message contains VNI, followed by MAC followed by IP (if any)
 		 * followed by remote VTEP IP.
@@ -5236,7 +5229,7 @@ int zebra_vxlan_remote_macip_add(struct zserv *client, u_short length,
 						prefix_mac2str(&macaddr, buf,
 							       sizeof(buf)),
 						vni, inet_ntoa(vtep_ip));
-					return -1;
+					return;
 				}
 
 				/* Is this MAC created for a MACIP? */
@@ -5289,7 +5282,7 @@ int zebra_vxlan_remote_macip_add(struct zserv *client, u_short length,
 						prefix_mac2str(&macaddr, buf,
 							       sizeof(buf)),
 						vni, inet_ntoa(vtep_ip));
-					return -1;
+					return;
 				}
 
 			} else if (memcmp(&n->emac, &macaddr, sizeof(macaddr))
@@ -5317,7 +5310,7 @@ int zebra_vxlan_remote_macip_add(struct zserv *client, u_short length,
 	}
 
 stream_failure:
-	return 0;
+	return;
 }
 
 /*
@@ -5621,8 +5614,7 @@ int zebra_vxlan_local_mac_add_update(struct interface *ifp,
 /*
  * Handle message from client to delete a remote VTEP for a VNI.
  */
-int zebra_vxlan_remote_vtep_del(struct zserv *client, u_short length,
-				struct zebra_vrf *zvrf)
+void zebra_vxlan_remote_vtep_del(ZAPI_HANDLER_ARGS)
 {
 	struct stream *s;
 	u_short l = 0;
@@ -5636,18 +5628,18 @@ int zebra_vxlan_remote_vtep_del(struct zserv *client, u_short length,
 	if (!is_evpn_enabled()) {
 		zlog_warn("%s: EVPN is not enabled yet we have received a vtep del command",
 			  __PRETTY_FUNCTION__);
-		return -1;
+		return;
 	}
 
 	if (zvrf_id(zvrf) != VRF_DEFAULT) {
 		zlog_err("Recv MACIP DEL for non-default VRF %u",
 			 zvrf_id(zvrf));
-		return -1;
+		return;
 	}
 
-	s = client->ibuf;
+	s = msg;
 
-	while (l < length) {
+	while (l < hdr->length) {
 		/* Obtain each remote VTEP and process. */
 		STREAM_GETL(s, vni);
 		l += 4;
@@ -5700,14 +5692,13 @@ int zebra_vxlan_remote_vtep_del(struct zserv *client, u_short length,
 	}
 
 stream_failure:
-	return 0;
+	return;
 }
 
 /*
  * Handle message from client to add a remote VTEP for a VNI.
  */
-int zebra_vxlan_remote_vtep_add(struct zserv *client, u_short length,
-				struct zebra_vrf *zvrf)
+void zebra_vxlan_remote_vtep_add(ZAPI_HANDLER_ARGS)
 {
 	struct stream *s;
 	u_short l = 0;
@@ -5720,18 +5711,18 @@ int zebra_vxlan_remote_vtep_add(struct zserv *client, u_short length,
 	if (!is_evpn_enabled()) {
 		zlog_warn("%s: EVPN not enabled yet we received a vtep_add zapi call",
 			  __PRETTY_FUNCTION__);
-		return -1;
+		return;
 	}
 
 	if (zvrf_id(zvrf) != VRF_DEFAULT) {
 		zlog_err("Recv MACIP ADD for non-default VRF %u",
 			 zvrf_id(zvrf));
-		return -1;
+		return;
 	}
 
-	s = client->ibuf;
+	s = msg;
 
-	while (l < length) {
+	while (l < hdr->length) {
 		/* Obtain each remote VTEP and process. */
 		STREAM_GETL(s, vni);
 		l += 4;
@@ -5782,7 +5773,7 @@ int zebra_vxlan_remote_vtep_add(struct zserv *client, u_short length,
 	}
 
 stream_failure:
-	return 0;
+	return;
 }
 
 /*
@@ -6572,8 +6563,7 @@ int zebra_vxlan_vrf_delete(struct zebra_vrf *zvrf)
  * Handle message from client to enable/disable advertisement of g/w macip
  * routes
  */
-int zebra_vxlan_advertise_subnet(struct zserv *client, u_short length,
-				 struct zebra_vrf *zvrf)
+void zebra_vxlan_advertise_subnet(ZAPI_HANDLER_ARGS)
 {
 	struct stream *s;
 	int advertise;
@@ -6587,19 +6577,19 @@ int zebra_vxlan_advertise_subnet(struct zserv *client, u_short length,
 	if (zvrf_id(zvrf) != VRF_DEFAULT) {
 		zlog_err("EVPN GW-MACIP Adv for non-default VRF %u",
 			 zvrf_id(zvrf));
-		return -1;
+		return;
 	}
 
-	s = client->ibuf;
+	s = msg;
 	advertise = stream_getc(s);
 	vni = stream_get3(s);
 
 	zvni = zvni_lookup(vni);
 	if (!zvni)
-		return 0;
+		return;
 
 	if (zvni->advertise_subnet == advertise)
-		return 0;
+		return;
 
 	if (IS_ZEBRA_DEBUG_VXLAN)
 		zlog_debug(
@@ -6612,35 +6602,34 @@ int zebra_vxlan_advertise_subnet(struct zserv *client, u_short length,
 
 	ifp = zvni->vxlan_if;
 	if (!ifp)
-		return 0;
+		return;
 
 	zif = ifp->info;
 
 	/* If down or not mapped to a bridge, we're done. */
 	if (!if_is_operative(ifp) || !zif->brslave_info.br_if)
-		return 0;
+		return;
 
 	zl2_info = zif->l2info.vxl;
 
 	vlan_if = zvni_map_to_svi(zl2_info.access_vlan,
 				  zif->brslave_info.br_if);
 	if (!vlan_if)
-		return 0;
+		return;
 
 	if (zvni->advertise_subnet)
 		zvni_advertise_subnet(zvni, vlan_if, 1);
 	else
 		zvni_advertise_subnet(zvni, vlan_if, 0);
 
-	return 0;
+	return;
 }
 
 /*
  * Handle message from client to enable/disable advertisement of g/w macip
  * routes
  */
-int zebra_vxlan_advertise_gw_macip(struct zserv *client, u_short length,
-				   struct zebra_vrf *zvrf)
+void zebra_vxlan_advertise_gw_macip(ZAPI_HANDLER_ARGS)
 {
 	struct stream *s;
 	int advertise;
@@ -6651,10 +6640,10 @@ int zebra_vxlan_advertise_gw_macip(struct zserv *client, u_short length,
 	if (zvrf_id(zvrf) != VRF_DEFAULT) {
 		zlog_err("EVPN GW-MACIP Adv for non-default VRF %u",
 			 zvrf_id(zvrf));
-		return -1;
+		return;
 	}
 
-	s = client->ibuf;
+	s = msg;
 	STREAM_GETC(s, advertise);
 	STREAM_GET(&vni, s, 3);
 
@@ -6667,7 +6656,7 @@ int zebra_vxlan_advertise_gw_macip(struct zserv *client, u_short length,
 					   : "disabled");
 
 		if (zvrf->advertise_gw_macip == advertise)
-			return 0;
+			return;
 
 		zvrf->advertise_gw_macip = advertise;
 
@@ -6694,29 +6683,29 @@ int zebra_vxlan_advertise_gw_macip(struct zserv *client, u_short length,
 
 		zvni = zvni_lookup(vni);
 		if (!zvni)
-			return 0;
+			return;
 
 		if (zvni->advertise_gw_macip == advertise)
-			return 0;
+			return;
 
 		zvni->advertise_gw_macip = advertise;
 
 		ifp = zvni->vxlan_if;
 		if (!ifp)
-			return 0;
+			return;
 
 		zif = ifp->info;
 
 		/* If down or not mapped to a bridge, we're done. */
 		if (!if_is_operative(ifp) || !zif->brslave_info.br_if)
-			return 0;
+			return;
 
 		zl2_info = zif->l2info.vxl;
 
 		vlan_if = zvni_map_to_svi(zl2_info.access_vlan,
 					  zif->brslave_info.br_if);
 		if (!vlan_if)
-			return 0;
+			return;
 
 		if (advertise_gw_macip_enabled(zvni)) {
 			/* Add primary SVI MAC-IP */
@@ -6738,7 +6727,7 @@ int zebra_vxlan_advertise_gw_macip(struct zserv *client, u_short length,
 	}
 
 stream_failure:
-	return 0;
+	return;
 }
 
 
@@ -6748,8 +6737,7 @@ stream_failure:
  * when disabled, the entries should be deleted and remote VTEPs and MACs
  * uninstalled from the kernel.
  */
-int zebra_vxlan_advertise_all_vni(struct zserv *client,
-				  u_short length, struct zebra_vrf *zvrf)
+void zebra_vxlan_advertise_all_vni(ZAPI_HANDLER_ARGS)
 {
 	struct stream *s = NULL;
 	int advertise = 0;
@@ -6758,10 +6746,10 @@ int zebra_vxlan_advertise_all_vni(struct zserv *client,
 	if (zvrf_id(zvrf) != VRF_DEFAULT) {
 		zlog_err("EVPN VNI Adv for non-default VRF %u",
 			 zvrf_id(zvrf));
-		return -1;
+		return;
 	}
 
-	s = client->ibuf;
+	s = msg;
 	STREAM_GETC(s, advertise);
 
 	if (IS_ZEBRA_DEBUG_VXLAN)
@@ -6770,7 +6758,7 @@ int zebra_vxlan_advertise_all_vni(struct zserv *client,
 			   is_evpn_enabled() ? "enabled" : "disabled");
 
 	if (zvrf->advertise_all_vni == advertise)
-		return 0;
+		return;
 
 	zvrf->advertise_all_vni = advertise;
 	if (is_evpn_enabled()) {
@@ -6795,13 +6783,13 @@ int zebra_vxlan_advertise_all_vni(struct zserv *client,
 		/* cleanup all l3vnis */
 		zns = zebra_ns_lookup(NS_DEFAULT);
 		if (!zns)
-			return -1;
+			return;
 
 		hash_iterate(zns->l3vni_table, zl3vni_cleanup_all, NULL);
 	}
 
 stream_failure:
-	return 0;
+	return;
 }
 
 /*

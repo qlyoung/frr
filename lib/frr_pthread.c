@@ -189,6 +189,7 @@ int frr_pthread_stop(struct frr_pthread *fpt, void **result)
 {
 	int ret = (*fpt->attr.stop)(fpt, result);
 	memset(&fpt->thread, 0x00, sizeof(fpt->thread));
+	hash_release(frr_pthread_hash, fpt);
 	return ret;
 }
 
