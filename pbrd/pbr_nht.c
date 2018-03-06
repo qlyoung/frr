@@ -228,9 +228,9 @@ void pbr_nht_delete_group(const char *name)
 {
 }
 
-bool pbr_nht_nexthop_valid(struct nexthop *nhop)
+bool pbr_nht_nexthop_valid(struct nexthop_group *nhg)
 {
-	zlog_debug("%s %p", __PRETTY_FUNCTION__, nhop);
+	zlog_debug("%s %p", __PRETTY_FUNCTION__, nhg);
 	return true;
 }
 

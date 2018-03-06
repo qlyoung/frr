@@ -87,10 +87,21 @@ struct pbr_map_sequence {
 	struct prefix *dst;
 
 	/*
-	 * The name of the nexthop group
+	 * The nexthop group we auto create
+	 * for when the user specifies a individual
+	 * nexthop
 	 */
-	struct nexthop *nhop;
+	struct nexthop_group *nhg;
+
+	/*
+	 * The name of the nexthop group
+	 * configured in the pbr-map
+	 */
 	char *nhgrp_name;
+
+	/*
+	 * Do we think are nexthops are installed
+	 */
 	bool nhs_installed;
 
 	bool installed;

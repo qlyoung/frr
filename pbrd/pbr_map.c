@@ -295,13 +295,13 @@ pbr_map_sequence_check_nexthops_valid(struct pbr_map_sequence *pbrms)
 	/*
 	 * Check validness of the nexthop or nexthop-group
 	 */
-	if (!pbrms->nhop && !pbrms->nhgrp_name)
+	if (!pbrms->nhg && !pbrms->nhgrp_name)
 		pbrms->reason |= PBR_MAP_INVALID_NO_NEXTHOPS;
 
-	if (pbrms->nhop && pbrms->nhgrp_name)
+	if (pbrms->nhg && pbrms->nhgrp_name)
 		pbrms->reason |= PBR_MAP_INVALID_BOTH_NHANDGRP;
 
-	if (pbrms->nhop && !pbr_nht_nexthop_valid(pbrms->nhop))
+	if (pbrms->nhg && !pbr_nht_nexthop_valid(pbrms->nhg))
 		pbrms->reason |= PBR_MAP_INVALID_NEXTHOP;
 
 	if (pbrms->nhgrp_name) {
