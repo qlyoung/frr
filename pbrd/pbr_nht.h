@@ -68,7 +68,7 @@ extern void pbr_nhgroup_add_nexthop_cb(const char *name);
 extern void pbr_nhgroup_del_nexthop_cb(const char *name);
 extern void pbr_nhgroup_delete_cb(const char *name);
 
-extern bool pbr_nht_nexthop_valid(struct nexthop *nhop);
+extern bool pbr_nht_nexthop_valid(struct nexthop_group *nhg);
 extern bool pbr_nht_nexthop_group_valid(const char *name);
 
 extern void pbr_nht_add_group(const char *name);
