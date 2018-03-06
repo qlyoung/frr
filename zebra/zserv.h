@@ -46,8 +46,12 @@ struct zserv {
 	int sock;
 
 	/* Input/output buffer to the client. */
-	struct stream *ibuf;
-	struct stream *obuf;
+	struct stream_fifo *ibuf_fifo;
+	struct stream_fifo *obuf_fifo;
+
+	/* Private I/O buffers */
+	struct stream *ibuf_work;
+	struct stream *obuf_work;
 
 	/* Buffer of data waiting to be written to client. */
 	struct buffer *wb;
@@ -128,7 +132,7 @@ struct zserv {
 	int last_write_cmd;
 };
 
-/* ZAPI protocol message header */
+/* ZAPI protocol structs */
 struct zmsghdr {
 	uint16_t length;
 	uint8_t marker;
@@ -138,7 +142,8 @@ struct zmsghdr {
 };
 
 #define ZAPI_HANDLER_ARGS                                                      \
-	struct zserv *client, struct zmsghdr *hdr, struct zebra_vrf *zvrf
+	struct zserv *client, struct zmsghdr *hdr, struct stream *msg,         \
+		struct zebra_vrf *zvrf
 
 /* Zebra instance */
 struct zebra_t {
@@ -192,7 +197,7 @@ extern int zsend_route_notify_owner(struct route_entry *re, struct prefix *p,
 
 extern void zserv_nexthop_num_warn(const char *, const struct prefix *,
 				   const unsigned int);
-extern int zebra_server_send_message(struct zserv *client);
+extern int zebra_server_send_message(struct zserv *client, struct stream *msg);
 
 extern struct zserv *zebra_find_client(u_char proto, u_short instance);
 
