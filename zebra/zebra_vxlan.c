@@ -46,6 +46,7 @@
 #include "zebra/zebra_vxlan.h"
 #include "zebra/zebra_memory.h"
 #include "zebra/zebra_l2.h"
+#include "zebra/zserv.h"
 
 DEFINE_MTYPE_STATIC(ZEBRA, HOST_PREFIX, "host prefix");
 DEFINE_MTYPE_STATIC(ZEBRA, ZVNI, "VNI hash");
@@ -4952,8 +4953,7 @@ int zebra_vxlan_local_neigh_add_update(struct interface *ifp,
 /*
  * Handle message from client to delete a remote MACIP for a VNI.
  */
-void zebra_vxlan_remote_macip_del(struct zserv *client, u_short length,
-				  struct zebra_vrf *zvrf)
+void zebra_vxlan_remote_macip_del(ZAPI_HANDLER_ARGS)
 {
 	struct stream *s;
 	vni_t vni;
@@ -4975,7 +4975,7 @@ void zebra_vxlan_remote_macip_del(struct zserv *client, u_short length,
 
 	s = client->ibuf;
 
-	while (l < length) {
+	while (l < hdr->length) {
 		/* Obtain each remote MACIP and process. */
 		/* Message contains VNI, followed by MAC followed by IP (if any)
 		 * followed by remote VTEP IP.
@@ -5108,8 +5108,7 @@ stream_failure:
  * could be just the add of a MAC address or the add of a neighbor
  * (IP+MAC).
  */
-void zebra_vxlan_remote_macip_add(struct zserv *client, u_short length,
-				  struct zebra_vrf *zvrf)
+void zebra_vxlan_remote_macip_add(ZAPI_HANDLER_ARGS)
 {
 	struct stream *s;
 	vni_t vni;
@@ -5141,7 +5140,7 @@ void zebra_vxlan_remote_macip_add(struct zserv *client, u_short length,
 
 	s = client->ibuf;
 
-	while (l < length) {
+	while (l < hdr->length) {
 		/* Obtain each remote MACIP and process. */
 		/* Message contains VNI, followed by MAC followed by IP (if any)
 		 * followed by remote VTEP IP.
@@ -5634,8 +5633,7 @@ int zebra_vxlan_local_mac_add_update(struct interface *ifp,
 /*
  * Handle message from client to delete a remote VTEP for a VNI.
  */
-void zebra_vxlan_remote_vtep_del(struct zserv *client, u_short length,
-				 struct zebra_vrf *zvrf)
+void zebra_vxlan_remote_vtep_del(ZAPI_HANDLER_ARGS)
 {
 	struct stream *s;
 	u_short l = 0;
@@ -5660,7 +5658,7 @@ void zebra_vxlan_remote_vtep_del(struct zserv *client, u_short length,
 
 	s = client->ibuf;
 
-	while (l < length) {
+	while (l < hdr->length) {
 		/* Obtain each remote VTEP and process. */
 		STREAM_GETL(s, vni);
 		l += 4;
@@ -5719,8 +5717,7 @@ stream_failure:
 /*
  * Handle message from client to add a remote VTEP for a VNI.
  */
-void zebra_vxlan_remote_vtep_add(struct zserv *client, u_short length,
-				 struct zebra_vrf *zvrf)
+void zebra_vxlan_remote_vtep_add(ZAPI_HANDLER_ARGS)
 {
 	struct stream *s;
 	u_short l = 0;
@@ -5744,7 +5741,7 @@ void zebra_vxlan_remote_vtep_add(struct zserv *client, u_short length,
 
 	s = client->ibuf;
 
-	while (l < length) {
+	while (l < hdr->length) {
 		/* Obtain each remote VTEP and process. */
 		STREAM_GETL(s, vni);
 		l += 4;
@@ -6609,8 +6606,7 @@ int zebra_vxlan_vrf_delete(struct zebra_vrf *zvrf)
  * Handle message from client to enable/disable advertisement of g/w macip
  * routes
  */
-void zebra_vxlan_advertise_subnet(struct zserv *client, u_short length,
-				  struct zebra_vrf *zvrf)
+void zebra_vxlan_advertise_subnet(ZAPI_HANDLER_ARGS)
 {
 	struct stream *s;
 	int advertise;
@@ -6676,8 +6672,7 @@ void zebra_vxlan_advertise_subnet(struct zserv *client, u_short length,
  * Handle message from client to enable/disable advertisement of g/w macip
  * routes
  */
-void zebra_vxlan_advertise_gw_macip(struct zserv *client, u_short length,
-				    struct zebra_vrf *zvrf)
+void zebra_vxlan_advertise_gw_macip(ZAPI_HANDLER_ARGS)
 {
 	struct stream *s;
 	int advertise;
@@ -6785,8 +6780,8 @@ stream_failure:
  * when disabled, the entries should be deleted and remote VTEPs and MACs
  * uninstalled from the kernel.
  */
-void zebra_vxlan_advertise_all_vni(struct zserv *client, u_short length,
-				   struct zebra_vrf *zvrf)
+void zebra_vxlan_advertise_all_vni(ZAPI_HANDLER_ARGS)
+
 {
 	struct stream *s = NULL;
 	int advertise = 0;
