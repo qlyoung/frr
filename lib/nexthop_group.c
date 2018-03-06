@@ -29,6 +29,8 @@
 #include "lib/nexthop_group_clippy.c"
 #endif
 
+DEFINE_MTYPE_STATIC(LIB, NEXTHOP_GROUP, "Nexthop Group")
+
 struct nexthop_group_hooks {
 	void (*new)(const char *name);
 	void (*add_nexthop)(const char *name);
@@ -64,6 +66,11 @@ static struct nexthop *nexthop_exists(struct nexthop_group *nhg,
 	}
 
 	return NULL;
+}
+
+struct nexthop_group *nexthop_group_new(void)
+{
+	return XCALLOC(MTYPE_NEXTHOP_GROUP, sizeof(struct nexthop_group));
 }
 
 /* Add nexthop to the end of a nexthop list.  */
