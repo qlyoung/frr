@@ -73,6 +73,11 @@ struct nexthop_group *nexthop_group_new(void)
 	return XCALLOC(MTYPE_NEXTHOP_GROUP, sizeof(struct nexthop_group));
 }
 
+void nexthop_group_delete(struct nexthop_group **nhg)
+{
+	XFREE(MTYPE_NEXTHOP_GROUP, *nhg);
+}
+
 /* Add nexthop to the end of a nexthop list.  */
 void nexthop_add(struct nexthop **target, struct nexthop *nexthop)
 {

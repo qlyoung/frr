@@ -47,6 +47,8 @@ void nexthop_group_init(void (*new)(const char *name),
 			void (*delete)(const char *name));
 
 struct nexthop_group *nexthop_group_new(void);
+void nexthop_group_delete(struct nexthop_group **nhg);
+
 void nexthop_add(struct nexthop **target, struct nexthop *nexthop);
 void nexthop_del(struct nexthop_group *nhg, struct nexthop *nexthop);
 void copy_nexthops(struct nexthop **tnh, struct nexthop *nh,
