@@ -21,6 +21,8 @@
 #ifndef __NEXTHOP_GROUP__
 #define __NEXTHOP_GROUP__
 
+#include <vty.h>
+
 /*
  * What is a nexthop group?
  *
@@ -80,4 +82,8 @@ DECLARE_QOBJ_TYPE(nexthop_group_cmd)
 
 extern struct nexthop_group_cmd *nhgc_find(const char *name);
 
+extern struct nexthop *nexthop_exists(struct nexthop_group *nhg,
+				      struct nexthop *nh);
+
+extern void nexthop_group_write_nexthop(struct vty *vty, struct nexthop *nh);
 #endif
