@@ -44,6 +44,16 @@ enum pbr_events {
 	PBR_NHG_DELETE,
 
 	/*
+	 * A individual nexthop has been added
+	 */
+	PBR_NEXTHOP_ADD,
+
+	/*
+	 * A individual nexthop has been deleted
+	 */
+	PBR_NEXTHOP_DELETE,
+
+	/*
 	 * A new pbr-map has been created
 	 */
 	PBR_MAP_ADD,

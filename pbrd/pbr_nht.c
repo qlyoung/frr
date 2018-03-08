@@ -105,7 +105,8 @@ static struct pbr_nexthop_cache *pbr_nht_lookup_nexthop(struct nexthop *nexthop)
 }
 #endif
 
-static void pbr_nht_find_nhg_from_table(struct hash_backet *b, void *data)
+static void pbr_nht_find_nhg_from_table_install(struct hash_backet *b,
+						void *data)
 {
 	struct pbr_nexthop_group_cache *pnhgc =
 		(struct pbr_nexthop_group_cache *)b->data;
@@ -122,32 +123,29 @@ static void pbr_nht_find_nhg_from_table(struct hash_backet *b, void *data)
 
 void pbr_nht_route_installed_for_table(uint32_t table_id)
 {
-	hash_iterate(pbr_nhg_hash, pbr_nht_find_nhg_from_table, &table_id);
+	hash_iterate(pbr_nhg_hash, pbr_nht_find_nhg_from_table_install,
+		     &table_id);
 }
 
-void pbr_nht_change_group(const char *name)
+static void pbr_nht_find_nhg_from_table_remove(struct hash_backet *b,
+					       void *data)
 {
-	struct nexthop_group_cmd *nhgc;
+	;
+}
+
+void pbr_nht_route_removed_for_table(uint32_t table_id)
+{
+	hash_iterate(pbr_nhg_hash, pbr_nht_find_nhg_from_table_remove,
+		     &table_id);
+}
+
+static afi_t pbr_nht_which_afi(struct nexthop_group nhg)
+{
 	struct nexthop *nexthop;
 	struct pbr_nexthop_cache *pnhc;
-	struct pbr_nexthop_group_cache *pnhgc;
-	struct pbr_nexthop_group_cache find;
 	afi_t install_afi = AFI_MAX;
 
-	nhgc = nhgc_find(name);
-	if (!nhgc)
-		return;
-
-	memset(&find, 0, sizeof(find));
-	strcpy(find.name, name);
-	pnhgc = hash_lookup(pbr_nhg_hash, &find);
-
-	if (!pnhgc) {
-		zlog_debug("Something wrong here, FUS!");
-		return;
-	}
-
-	for (ALL_NEXTHOPS(nhgc->nhg, nexthop)) {
+	for (ALL_NEXTHOPS(nhg, nexthop)) {
 		zlog_debug("Handling stuff\n");
 		pnhc = hash_get(pbr_nh_hash, nexthop, pbr_nh_alloc);
 		zlog_debug("Found: %p", pnhc);
@@ -175,9 +173,60 @@ void pbr_nht_change_group(const char *name)
 		}
 	}
 
+	return install_afi;
+}
+
+static void pbr_nht_install_nexthop_group(struct pbr_nexthop_group_cache *pnhgc,
+					  struct nexthop_group nhg)
+{
+	afi_t install_afi;
+
+	install_afi = pbr_nht_which_afi(nhg);
+
 	pnhgc->installed = false;
 	pnhgc->valid = true;
-	route_add(pnhgc, nhgc, install_afi);
+	route_add(pnhgc, nhg, install_afi);
+}
+
+static void
+pbr_nht_uninstall_nexthop_group(struct pbr_nexthop_group_cache *pnhgc,
+				struct nexthop_group nhg)
+{
+	afi_t install_afi;
+
+	install_afi = pbr_nht_which_afi(nhg);
+
+	pnhgc->installed = false;
+	pnhgc->valid = false;
+	route_delete(pnhgc, install_afi);
+}
+
+void pbr_nht_change_group(const char *name)
+{
+	struct nexthop_group_cmd *nhgc;
+	struct pbr_nexthop_group_cache *pnhgc;
+	struct pbr_nexthop_group_cache find;
+
+	nhgc = nhgc_find(name);
+	if (!nhgc)
+		return;
+
+	memset(&find, 0, sizeof(find));
+	strcpy(find.name, name);
+	pnhgc = hash_lookup(pbr_nhg_hash, &find);
+
+	if (!pnhgc) {
+		zlog_debug("Something wrong here, FUS!");
+		return;
+	}
+
+	pbr_nht_install_nexthop_group(pnhgc, nhgc->nhg);
+}
+
+char *pbr_nht_nexthop_make_name(char *name, uint32_t seqno, char *buffer)
+{
+	sprintf(buffer, "%s%u", name, seqno);
+	return buffer;
 }
 
 static void *pbr_nhgc_alloc(void *p)
@@ -194,6 +243,46 @@ static void *pbr_nhgc_alloc(void *p)
 		   __PRETTY_FUNCTION__, new->name, new->table_id);
 
 	return new;
+}
+
+void pbr_nht_add_individual_nexthop(const char *name, uint32_t seqno)
+{
+	struct pbr_nexthop_group_cache *pnhgc;
+	struct pbr_nexthop_group_cache find;
+	struct pbr_map_sequence *pbrms;
+
+	pbrms = pbrms_get(name, seqno);
+
+	memset(&find, 0, sizeof(find));
+	pbr_nht_nexthop_make_name(pbrms->parent->name, pbrms->seqno, find.name);
+	if (!pbrms->internal_nhg_name)
+		pbrms->internal_nhg_name = XSTRDUP(MTYPE_TMP, find.name);
+
+	pnhgc = hash_get(pbr_nhg_hash, &find, pbr_nhgc_alloc);
+
+	pbr_nht_install_nexthop_group(pnhgc, *pbrms->nhg);
+}
+
+void pbr_nht_delete_individual_nexthop(const char *name, uint32_t seqno)
+{
+	struct pbr_nexthop_group_cache *pnhgc;
+	struct pbr_nexthop_group_cache find;
+	struct pbr_map_sequence *pbrms;
+	struct nexthop *nh;
+
+	pbrms = pbrms_get(name, seqno);
+
+	memset(&find, 0, sizeof(find));
+	strcpy(&find.name[0], pbrms->internal_nhg_name);
+	pnhgc = hash_lookup(pbr_nhg_hash, &find);
+
+	pbr_nht_uninstall_nexthop_group(pnhgc, *pbrms->nhg);
+
+	nh = pbrms->nhg->nexthop;
+	nexthop_del(pbrms->nhg, nh);
+	nexthop_free(nh);
+	nexthop_group_delete(&pbrms->nhg);
+	XFREE(MTYPE_TMP, pbrms->internal_nhg_name);
 }
 
 void pbr_nht_add_group(const char *name)

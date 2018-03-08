@@ -92,6 +92,7 @@ struct pbr_map_sequence {
 	 * nexthop
 	 */
 	struct nexthop_group *nhg;
+	char *internal_nhg_name;
 
 	/*
 	 * The name of the nexthop group

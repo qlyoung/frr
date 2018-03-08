@@ -188,6 +188,117 @@ DEFPY(pbr_map_nexthop_group, pbr_map_nexthop_group_cmd,
 	return CMD_SUCCESS;
 }
 
+DEFPY(pbr_map_nexthop, pbr_map_nexthop_cmd,
+      "[no] nexthop <A.B.C.D|X:X::X:X>$addr [INTERFACE]$intf [nexthop-vrf NAME$name]",
+      NO_STR
+      "Specify one of the nexthops in this ECMP group\n"
+      "v4 Address\n"
+      "v6 Address\n"
+      "Interface to use\n"
+      "If the nexthop is in a different vrf tell us\n"
+      "The nexthop-vrf Name\n")
+{
+	struct pbr_map_sequence *pbrms = VTY_GET_CONTEXT(pbr_map_sequence);
+	struct vrf *vrf;
+	struct nexthop nhop;
+	struct nexthop *nh;
+	struct pbr_event *pbre;
+
+	if (pbrms->nhgrp_name) {
+		vty_out(vty,
+			"Please unconfigure the nexthop group before adding an individual nexthop");
+		return CMD_WARNING;
+	}
+
+	if (name)
+		vrf = vrf_lookup_by_name(name);
+	else
+		vrf = vrf_lookup_by_id(VRF_DEFAULT);
+
+	if (!vrf) {
+		vty_out(vty, "Specified: %s is non-existent\n", name);
+		return CMD_WARNING;
+	}
+
+	memset(&nhop, 0, sizeof(nhop));
+	nhop.vrf_id = vrf->vrf_id;
+
+	if (addr->sa.sa_family == AF_INET) {
+		nhop.gate.ipv4.s_addr = addr->sin.sin_addr.s_addr;
+		if (intf) {
+			nhop.type = NEXTHOP_TYPE_IPV4_IFINDEX;
+			nhop.ifindex = ifname2ifindex(intf, vrf->vrf_id);
+			if (nhop.ifindex == IFINDEX_INTERNAL) {
+				vty_out(vty,
+					"Specified Intf %s does not exist in vrf: %s\n",
+					intf, vrf->name);
+				return CMD_WARNING;
+			}
+		} else
+			nhop.type = NEXTHOP_TYPE_IPV4;
+	} else {
+		memcpy(&nhop.gate.ipv6, &addr->sin6.sin6_addr, 16);
+		if (intf) {
+			nhop.type = NEXTHOP_TYPE_IPV6_IFINDEX;
+			nhop.ifindex = ifname2ifindex(intf, vrf->vrf_id);
+			if (nhop.ifindex == IFINDEX_INTERNAL) {
+				vty_out(vty,
+					"Specified Intf %s does not exist in vrf: %s\n",
+					intf, vrf->name);
+				return CMD_WARNING;
+			}
+		} else
+			nhop.type = NEXTHOP_TYPE_IPV6;
+	}
+
+	if (pbrms->nhg)
+		nh = nexthop_exists(pbrms->nhg, &nhop);
+	else {
+		if (no) {
+			vty_out(vty, "No nexthops to delete");
+			return CMD_WARNING;
+		}
+
+		pbrms->nhg = nexthop_group_new();
+		nh = NULL;
+	}
+
+	if (no) {
+		if (nh) {
+			// nexthop_del(pbrms->nhg, nh);
+			// nexthop_free(nh);
+
+			pbre = pbr_event_new();
+			pbre->event = PBR_NEXTHOP_DELETE;
+			pbre->seqno = pbrms->seqno;
+			strlcpy(pbre->name, pbrms->parent->name,
+				sizeof(pbre->name));
+			pbr_event_enqueue(pbre);
+		}
+	} else if (!nh) {
+
+		if (pbrms->nhg->nexthop) {
+			vty_out(vty,
+				"If you would like more than one nexthop please use nexthop-groups");
+			return CMD_WARNING;
+		}
+
+		/* must be adding new nexthop since !no and !nexthop_exists */
+		nh = nexthop_new();
+
+		memcpy(nh, &nhop, sizeof(nhop));
+		nexthop_add(&pbrms->nhg->nexthop, nh);
+
+		pbre = pbr_event_new();
+		pbre->event = PBR_NEXTHOP_ADD;
+		pbre->seqno = pbrms->seqno;
+		strlcpy(pbre->name, pbrms->parent->name, sizeof(pbre->name));
+		pbr_event_enqueue(pbre);
+	}
+
+	return CMD_SUCCESS;
+}
+
 DEFPY (pbr_table_range,
        pbr_table_range_cmd,
        "[no]$no pbr table range (10000-65535)$start (11000-65535)$end",
@@ -329,6 +440,17 @@ DEFPY (show_pbr_map,
 					pbrms->nhs_installed,
 					pbr_nht_get_installed(
 						pbrms->nhgrp_name));
+			} else if (pbrms->nhg) {
+				vty_out(vty, "\t");
+				nexthop_group_write_nexthop(
+					vty, pbrms->nhg->nexthop);
+				vty_out(vty,
+					"\t\tInstalled: %u(%d) Tableid: %d\n",
+					pbrms->nhs_installed,
+					pbr_nht_get_installed(
+						pbrms->internal_nhg_name),
+					pbr_nht_get_table(
+						pbrms->internal_nhg_name));
 			} else {
 				vty_out(vty,
 					"\tNexthop-Group: Unknown Installed: 0(0)\n");
@@ -424,6 +546,9 @@ static int pbr_vty_map_config_write_sequence(struct vty *vty,
 	if (pbrms->nhgrp_name)
 		vty_out(vty, "  set nexthop-group %s\n", pbrms->nhgrp_name);
 
+	if (pbrms->nhg)
+		nexthop_group_write_nexthop(vty, pbrms->nhg->nexthop);
+
 	vty_out (vty, "!\n");
 	return 1;
 }
@@ -466,6 +591,7 @@ void pbr_vty_init(void)
 	install_element(PBRMAP_NODE, &pbr_map_match_src_cmd);
 	install_element(PBRMAP_NODE, &pbr_map_match_dst_cmd);
 	install_element(PBRMAP_NODE, &pbr_map_nexthop_group_cmd);
+	install_element(PBRMAP_NODE, &pbr_map_nexthop_cmd);
 	install_element(VIEW_NODE, &show_pbr_cmd);
 	install_element(VIEW_NODE, &show_pbr_map_cmd);
 	install_element(VIEW_NODE, &show_pbr_interface_cmd);

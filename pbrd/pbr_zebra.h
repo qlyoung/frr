@@ -29,7 +29,7 @@ struct pbr_interface {
 extern void pbr_zebra_init(void);
 
 extern void route_add(struct pbr_nexthop_group_cache *pnhgc,
-		      struct nexthop_group_cmd *nhgc, afi_t install_afi);
+		      struct nexthop_group nhg, afi_t install_afi);
 extern void route_delete(struct pbr_nexthop_group_cache *pnhgc,
 			 afi_t install_afi);
 

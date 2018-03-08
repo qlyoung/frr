@@ -73,6 +73,9 @@ static int pbr_map_sequence_compare(const struct pbr_map_sequence *pbrms1,
 
 static void pbr_map_sequence_delete(struct pbr_map_sequence *pbrms)
 {
+	if (pbrms->internal_nhg_name)
+		XFREE(MTYPE_TMP, pbrms->internal_nhg_name);
+
 	XFREE(MTYPE_PBR_MAP_SEQNO, pbrms);
 }
 
@@ -372,6 +375,7 @@ extern bool pbr_map_check_valid(const char *name)
 extern void pbr_map_schedule_policy_from_nhg(const char *nh_group)
 {
 	struct pbr_map_sequence *pbrms;
+	struct pbr_event *pbre;
 	struct pbr_map *pbrm;
 	struct listnode *node;
 
@@ -382,10 +386,22 @@ extern void pbr_map_schedule_policy_from_nhg(const char *nh_group)
 			zlog_debug("\tNH Grp name: %s",
 				   pbrms->nhgrp_name ? pbrms->nhgrp_name
 						     : "NULL");
+
 			if (pbrms->nhgrp_name
 			    && (strcmp(nh_group, pbrms->nhgrp_name) == 0)) {
-				struct pbr_event *pbre;
+				pbrms->nhs_installed = true;
 
+				pbre = pbr_event_new();
+				pbre->event = PBR_MAP_MODIFY;
+				strcpy(pbre->name, pbrm->name);
+				pbre->seqno = pbrms->seqno;
+
+				pbr_event_enqueue(pbre);
+			}
+
+			if (pbrms->nhg
+			    && (strcmp(nh_group, pbrms->internal_nhg_name)
+				== 0)) {
 				pbrms->nhs_installed = true;
 
 				pbre = pbr_event_new();
@@ -420,7 +436,7 @@ extern void pbr_map_policy_install(const char *name)
 			install = false;
 	}
 
-	if (install) {
+	if (install && pbrm->incoming->count) {
 		zlog_debug("\tInstalling");
 		pbr_send_pbr_map(pbrm, true);
 	}
