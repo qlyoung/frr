@@ -75,13 +75,16 @@ extern void pbr_nht_add_group(const char *name);
 extern void pbr_nht_change_group(const char *name);
 extern void pbr_nht_delete_group(const char *name);
 
+extern void pbr_nht_add_individual_nexthop(const char *name, uint32_t seqno);
+extern void pbr_nht_delete_individual_nexthop(const char *name, uint32_t seqno);
 /*
  * Given the tableid of the installed default
  * route, find the nexthop-group associated with
  * it, then find all pbr-maps that use it and
- * install them as well.
+ * install/delete them as well.
  */
 extern void pbr_nht_route_installed_for_table(uint32_t table_id);
+extern void pbr_nht_route_removed_for_table(uint32_t table_id);
 
 /*
  * Given the nexthop group name, lookup the associated
@@ -90,6 +93,9 @@ extern void pbr_nht_route_installed_for_table(uint32_t table_id);
 extern uint32_t pbr_nht_get_table(const char *name);
 
 extern bool pbr_nht_get_installed(const char *name);
+
+extern char *pbr_nht_nexthop_make_name(char *name, uint32_t seqno,
+				       char *buffer);
 
 extern void pbr_nht_init(void);
 #endif

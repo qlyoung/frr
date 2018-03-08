@@ -182,8 +182,9 @@ static int route_notify_owner(int command, struct zclient *zclient,
 		pbr_nht_route_installed_for_table(table_id);
 		break;
 	case ZAPI_ROUTE_REMOVED:
-		zlog_debug("%s Route removed for table: %u",
+		zlog_debug("%s Route Removed succeeded for table: %u",
 			   __PRETTY_FUNCTION__, table_id);
+		pbr_nht_route_removed_for_table(table_id);
 		break;
 	case ZAPI_ROUTE_REMOVE_FAIL:
 		zlog_debug("%s Route remove fail for table: %u",
@@ -236,8 +237,7 @@ static void zebra_connected(struct zclient *zclient)
 	zclient_send_reg_requests(zclient, VRF_DEFAULT);
 }
 
-static void route_add_helper(struct zapi_route *api,
-			     struct nexthop_group_cmd *nhgc,
+static void route_add_helper(struct zapi_route *api, struct nexthop_group nhg,
 			     uint8_t install_afi)
 {
 	struct zapi_nexthop *api_nh;
@@ -247,7 +247,7 @@ static void route_add_helper(struct zapi_route *api,
 	api->prefix.family = install_afi;
 
 	i = 0;
-	for (ALL_NEXTHOPS(nhgc->nhg, nhop)) {
+	for (ALL_NEXTHOPS(nhg, nhop)) {
 		api_nh = &api->nexthops[i];
 		api_nh->vrf_id = nhop->vrf_id;
 		api_nh->type = nhop->type;
@@ -284,8 +284,8 @@ static void route_add_helper(struct zapi_route *api,
  * This function assumes a default route is being
  * installed into the appropriate tableid
  */
-void route_add(struct pbr_nexthop_group_cache *pnhgc,
-	       struct nexthop_group_cmd *nhgc, afi_t install_afi)
+void route_add(struct pbr_nexthop_group_cache *pnhgc, struct nexthop_group nhg,
+	       afi_t install_afi)
 {
 	struct zapi_route api;
 
@@ -302,14 +302,14 @@ void route_add(struct pbr_nexthop_group_cache *pnhgc,
 	SET_FLAG(api.message, ZAPI_MESSAGE_NEXTHOP);
 	switch (install_afi) {
 	case AFI_MAX:
-		route_add_helper(&api, nhgc, AF_INET);
-		route_add_helper(&api, nhgc, AF_INET6);
+		route_add_helper(&api, nhg, AF_INET);
+		route_add_helper(&api, nhg, AF_INET6);
 		break;
 	case AFI_IP:
-		route_add_helper(&api, nhgc, AF_INET);
+		route_add_helper(&api, nhg, AF_INET);
 		break;
 	case AFI_IP6:
-		route_add_helper(&api, nhgc, AF_INET6);
+		route_add_helper(&api, nhg, AF_INET6);
 		break;
 	case AFI_L2VPN:
 		zlog_debug("We do not handle L2VPN");
@@ -458,7 +458,10 @@ static void pbr_encode_pbr_map_sequence(struct stream *s,
 	stream_putw(s, 0);  /* src port */
 	pbr_encode_pbr_map_sequence_prefix(s, pbrms->dst, family);
 	stream_putw(s, 0);  /* dst port */
-	stream_putl(s, pbr_nht_get_table(pbrms->nhgrp_name));
+	if (pbrms->nhgrp_name)
+		stream_putl(s, pbr_nht_get_table(pbrms->nhgrp_name));
+	else if (pbrms->nhg)
+		stream_putl(s, pbr_nht_get_table(pbrms->internal_nhg_name));
 	stream_putl(s, ifp->ifindex);
 }
 

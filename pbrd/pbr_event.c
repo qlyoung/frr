@@ -52,6 +52,14 @@ static const char *pbr_event_wqentry2str(struct pbr_event *pbre,
 		snprintf(buffer, buflen, "Nexthop Group Nexthop Deleted %s",
 			 pbre->name);
 		break;
+	case PBR_NEXTHOP_ADD:
+		snprintf(buffer, buflen, "Nexthop Added to %s(%d)", pbre->name,
+			 pbre->seqno);
+		break;
+	case PBR_NEXTHOP_DELETE:
+		snprintf(buffer, buflen, "Nexthop Deleted from %s(%d)",
+			 pbre->name, pbre->seqno);
+		break;
 	case PBR_NHG_DELETE:
 		snprintf(buffer, buflen, "Nexthop Group Deleted %s",
 			 pbre->name);
@@ -124,6 +132,14 @@ static wq_item_status pbr_event_process_wq(struct work_queue *wq, void *data)
 	case PBR_NHG_DELETE:
 		pbr_nht_delete_group(pbre->name);
 		pbr_map_check_nh_group_change(pbre->name);
+		break;
+	case PBR_NEXTHOP_ADD:
+		pbr_nht_add_individual_nexthop(pbre->name, pbre->seqno);
+		pbr_map_check(pbre->name, pbre->seqno);
+		break;
+	case PBR_NEXTHOP_DELETE:
+		pbr_nht_delete_individual_nexthop(pbre->name, pbre->seqno);
+		pbr_map_check(pbre->name, pbre->seqno);
 		break;
 	case PBR_MAP_ADD:
 		pbr_map_add_interfaces(pbre->name);
