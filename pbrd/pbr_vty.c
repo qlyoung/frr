@@ -29,12 +29,14 @@
 #include "nexthop_group.h"
 #include "log.h"
 #include "json.h"
+#include "debug.h"
 
 #include "pbrd/pbr_nht.h"
 #include "pbrd/pbr_map.h"
 #include "pbrd/pbr_zebra.h"
 #include "pbrd/pbr_vty.h"
 #include "pbrd/pbr_event.h"
+#include "pbrd/pbr_debug.h"
 #ifndef VTYSH_EXTRACT_PL
 #include "pbrd/pbr_vty_clippy.c"
 #endif
@@ -595,6 +597,10 @@ void pbr_vty_init(void)
 	install_element(VIEW_NODE, &show_pbr_cmd);
 	install_element(VIEW_NODE, &show_pbr_map_cmd);
 	install_element(VIEW_NODE, &show_pbr_interface_cmd);
+
+	/* debugs */
+	install_element(VIEW_NODE, &debug_pbr_map_cmd);
+	install_element(CONFIG_NODE, &debug_pbr_map_cmd);
 
 	return;
 }
