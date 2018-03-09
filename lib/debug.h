@@ -123,13 +123,6 @@ struct debug_callbacks {
 #define DEBUG_FLAGS_CHECK(name, type) CHECK_FLAG_ATOMIC(&(name)->flags, (type))
 
 /*
- * Check if any mode is on for a debug.
- *
- * MT-Safe
- */
-#define DEBUG(name) DEBUG_MODE_CHECK((name), DEBUG_MODE_ALL)
-
-/*
  * Set modes on a debug.
  *
  * MT-Safe
@@ -201,6 +194,26 @@ struct debug_callbacks {
 #define DEBUG_NODE2MODE(vtynode)                                               \
 	(((vtynode) == CONFIG_NODE) ? DEBUG_MODE_ALL : DEBUG_MODE_TERM)
 
+/*
+ * Debug at the given level to the default logging destination.
+ *
+ * MT-Safe
+ */
+#define DEBUG(level, name, message, ...)                                       \
+	do {                                                                   \
+		if (DEBUG_MODE_CHECK(name, DEBUG_MODE_ALL))                    \
+			zlog_##level(message, __VA_ARGS__);                    \
+	} while (0);
+
+#define DEBUGE(name, message, ...) DEBUG(err, name, message, __VA_ARGS__)
+
+#define DEBUGW(name, message, ...) DEBUG(warn, name, message, __VA_ARGS__)
+
+#define DEBUGI(name, message, ...) DEBUG(info, name, message, __VA_ARGS__)
+
+#define DEBUGN(name, message, ...) DEBUG(notice, name, message, __VA_ARGS__)
+
+#define DEBUGD(name, message, ...) DEBUG(debug, name, message, __VA_ARGS__)
 
 /*
  * Optional initializer for debugging. Highly recommended.
