@@ -388,8 +388,10 @@ void pbr_nht_add_group(const char *name)
 
 		memcpy(&lookup.nexthop, nhop, sizeof(*nhop));
 		pnhc = hash_lookup(pnhgc->nhh, &lookup);
-		if (!pnhc)
+		if (!pnhc) {
 			pnhc = hash_get(pnhgc->nhh, &lookup, pbr_nh_alloc);
+			pnhc->parent = pnhgc;
+		}
 	}
 }
 
