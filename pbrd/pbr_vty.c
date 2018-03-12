@@ -189,8 +189,9 @@ DEFPY(pbr_map_nexthop_group, pbr_map_nexthop_group_cmd,
 }
 
 DEFPY(pbr_map_nexthop, pbr_map_nexthop_cmd,
-      "[no] nexthop <A.B.C.D|X:X::X:X>$addr [INTERFACE]$intf [nexthop-vrf NAME$name]",
+      "[no] set nexthop <A.B.C.D|X:X::X:X>$addr [INTERFACE]$intf [nexthop-vrf NAME$name]",
       NO_STR
+      "Set for the PBR-MAP\n"
       "Specify one of the nexthops in this ECMP group\n"
       "v4 Address\n"
       "v6 Address\n"
@@ -559,8 +560,10 @@ static int pbr_vty_map_config_write_sequence(struct vty *vty,
 	if (pbrms->nhgrp_name)
 		vty_out(vty, "  set nexthop-group %s\n", pbrms->nhgrp_name);
 
-	if (pbrms->nhg)
+	if (pbrms->nhg) {
+		vty_out(vty, "  set");
 		nexthop_group_write_nexthop(vty, pbrms->nhg->nexthop);
+	}
 
 	vty_out (vty, "!\n");
 	return 1;
