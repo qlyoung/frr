@@ -252,7 +252,6 @@ static void pbr_nht_install_nexthop_group(struct pbr_nexthop_group_cache *pnhgc,
 	install_afi = pbr_nht_which_afi(nhg);
 
 	pnhgc->installed = false;
-	pnhgc->valid = true;
 	route_add(pnhgc, nhg, install_afi);
 }
 
@@ -422,37 +421,37 @@ bool pbr_nht_nexthop_group_valid(const char *name)
 	return false;
 }
 
+struct pbr_nht_individual {
+	struct zapi_route *nhr;
+
+	uint32_t valid;
+};
+
 static void pbr_nht_individual_nexthop_update_lookup(struct hash_backet *b,
 						     void *data)
 {
 	struct pbr_nexthop_cache *pnhc = b->data;
-	struct zapi_route *nhr = data;
+	struct pbr_nht_individual *pnhi = data;
 	char buf[PREFIX_STRLEN];
 	bool old_valid;
 
 	old_valid = pnhc->valid;
 
-	switch (nhr->type) {
-	case NEXTHOP_TYPE_IFINDEX:
-	case NEXTHOP_TYPE_BLACKHOLE:
-		return;
-	case NEXTHOP_TYPE_IPV4:
-	case NEXTHOP_TYPE_IPV4_IFINDEX:
+	switch (pnhi->nhr->prefix.family) {
+	case AF_INET:
 		if (pnhc->nexthop.gate.ipv4.s_addr
-		    == nhr->prefix.u.prefix4.s_addr)
-			pnhc->valid = !!nhr->nexthop_num;
-
+		    == pnhi->nhr->prefix.u.prefix4.s_addr)
+			pnhc->valid = !!pnhi->nhr->nexthop_num;
 		break;
-	case NEXTHOP_TYPE_IPV6:
-	case NEXTHOP_TYPE_IPV6_IFINDEX:
-		if (memcmp(&pnhc->nexthop.gate.ipv6, &nhr->prefix.u.prefix6, 16)
-		    == 0)
-			pnhc->valid = !!nhr->nexthop_num;
+	case AF_INET6:
+		if (memcmp(&pnhc->nexthop.gate.ipv6,
+			   &pnhi->nhr->prefix.u.prefix6, 16) == 0)
+			pnhc->valid = !!pnhi->nhr->nexthop_num;
 		break;
 	}
 
 	zlog_debug("\tFound %s: old: %d new: %d",
-		   prefix2str(&nhr->prefix, buf, sizeof(buf)), old_valid,
+		   prefix2str(&pnhi->nhr->prefix, buf, sizeof(buf)), old_valid,
 		   pnhc->valid);
 	if (old_valid != pnhc->valid) {
 		struct pbr_event *pbre;
@@ -463,14 +462,25 @@ static void pbr_nht_individual_nexthop_update_lookup(struct hash_backet *b,
 
 		pbr_event_enqueue(pbre);
 	}
+
+	if (pnhc->valid)
+		pnhi->valid += 1;
 }
 
 static void pbr_nht_nexthop_update_lookup(struct hash_backet *b, void *data)
 {
 	struct pbr_nexthop_group_cache *pnhgc = b->data;
+	struct pbr_nht_individual pnhi;
 
+	pnhi.nhr = (struct zapi_route *)data;
+	pnhi.valid = 0;
 	hash_iterate(pnhgc->nhh, pbr_nht_individual_nexthop_update_lookup,
-		     data);
+		     &pnhi);
+
+	/*
+	 * If any of the specified nexthops are valid we are valid
+	 */
+	pnhgc->valid = !!pnhi.valid;
 }
 
 void pbr_nht_nexthop_update(struct zapi_route *nhr)

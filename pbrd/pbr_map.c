@@ -304,7 +304,8 @@ pbr_map_sequence_check_nexthops_valid(struct pbr_map_sequence *pbrms)
 	if (pbrms->nhg && pbrms->nhgrp_name)
 		pbrms->reason |= PBR_MAP_INVALID_BOTH_NHANDGRP;
 
-	if (pbrms->nhg && !pbr_nht_nexthop_valid(pbrms->nhg))
+	if (pbrms->nhg &&
+	    !pbr_nht_nexthop_group_valid(pbrms->internal_nhg_name))
 		pbrms->reason |= PBR_MAP_INVALID_NEXTHOP;
 
 	if (pbrms->nhgrp_name) {
@@ -474,11 +475,19 @@ extern void pbr_map_check_nh_group_change(const char *nh_group)
 	struct pbr_map_sequence *pbrms;
 	struct pbr_map *pbrm;
 	struct listnode *node;
+	bool found_name;
 
 	RB_FOREACH (pbrm, pbr_map_entry_head, &pbr_maps) {
 		for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, node, pbrms)) {
-			if (pbrms->nhgrp_name &&
-			    (strcmp(nh_group, pbrms->nhgrp_name) == 0)) {
+			found_name = false;
+			if (pbrms->nhgrp_name)
+				found_name =
+					!strcmp(nh_group, pbrms->nhgrp_name);
+			else if (pbrms->nhg)
+				found_name = !strcmp(nh_group,
+						     pbrms->internal_nhg_name);
+
+			if (found_name) {
 				bool original = pbrm->valid;
 
 				pbr_map_check_valid_internal(pbrm);
