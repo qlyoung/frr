@@ -360,9 +360,22 @@ static int pbr_zebra_nexthop_update(int command, struct zclient *zclient,
 				    zebra_size_t length, vrf_id_t vrf_id)
 {
 	struct zapi_route nhr;
+	char buf[PREFIX2STR_BUFFER];
+	uint32_t i;
 
 	zapi_nexthop_update_decode(zclient->ibuf, &nhr);
 
+	zlog_debug("Received Nexthop update: %s",
+		   prefix2str(&nhr.prefix, buf, sizeof(buf)));
+	zlog_debug("\tNexthops(%u)", nhr.nexthop_num);
+	for (i = 0; i < nhr.nexthop_num; i++) {
+		zlog_debug("\tType: %d: vrf: %d, ifindex: %d gate: %s",
+			   nhr.nexthops[i].type, nhr.nexthops[i].vrf_id,
+			   nhr.nexthops[i].ifindex,
+			   inet_ntoa(nhr.nexthops[i].gate.ipv4));
+	}
+
+	pbr_nht_nexthop_update(&nhr);
 	return 1;
 }
 

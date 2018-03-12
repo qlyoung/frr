@@ -460,6 +460,19 @@ DEFPY (show_pbr_map,
 	return CMD_SUCCESS;
 }
 
+DEFPY(show_pbr_nexthop_group,
+      show_pbr_nexthop_group_cmd,
+      "show pbr nexthop-groups [WORD$word]",
+      SHOW_STR
+      "Policy Based Routing\n"
+      "Nexthop Groups\n"
+      "Optional Name of the nexthop group\n")
+{
+	pbr_nht_show_nexthop_group(vty, word);
+
+	return CMD_SUCCESS;
+}
+
 DEFPY (show_pbr_interface,
 	show_pbr_interface_cmd,
 	"show pbr interface [NAME$name] [json$json]",
@@ -595,6 +608,7 @@ void pbr_vty_init(void)
 	install_element(VIEW_NODE, &show_pbr_cmd);
 	install_element(VIEW_NODE, &show_pbr_map_cmd);
 	install_element(VIEW_NODE, &show_pbr_interface_cmd);
+	install_element(VIEW_NODE, &show_pbr_nexthop_group_cmd);
 
 	return;
 }
