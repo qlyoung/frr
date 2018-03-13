@@ -110,7 +110,7 @@ static const char *pbr_event_wqentry2str(struct pbr_event *pbre,
 
 void pbr_event_free(struct pbr_event **pbre)
 {
-	XFREE(MTYPE_PBR_EVENT, pbre);
+	XFREE(MTYPE_PBR_EVENT, *pbre);
 }
 
 static void pbr_event_delete_wq(struct work_queue *wq, void *data)
