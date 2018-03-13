@@ -330,6 +330,7 @@ void pbr_nht_delete_individual_nexthop(const char *name, uint32_t seqno)
 	struct pbr_nexthop_group_cache *pnhgc;
 	struct pbr_nexthop_group_cache find;
 	struct pbr_nexthop_cache *pnhc;
+	struct pbr_nexthop_cache lup;
 	struct pbr_map_sequence *pbrms;
 	struct nexthop *nh;
 
@@ -340,11 +341,14 @@ void pbr_nht_delete_individual_nexthop(const char *name, uint32_t seqno)
 	pnhgc = hash_lookup(pbr_nhg_hash, &find);
 
 	nh = pbrms->nhg->nexthop;
-	pnhc = hash_lookup(pnhgc->nhh, nh);
+	memcpy(&lup.nexthop, nh, sizeof(struct nexthop));
+	pnhc = hash_lookup(pnhgc->nhh, &lup);
 	pnhc->parent = NULL;
 	hash_release(pnhgc->nhh, pnhc);
 	pbr_nh_delete(&pnhc);
 	pbr_nht_uninstall_nexthop_group(pnhgc, *pbrms->nhg);
+
+	hash_release(pbr_nhg_hash, pnhgc);
 
 	nexthop_del(pbrms->nhg, nh);
 	nexthop_free(nh);

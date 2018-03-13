@@ -190,9 +190,14 @@ extern void pbr_map_delete(const char *name, uint32_t seqno)
 		pbr_send_pbr_map(pbrm, 0);
 
 	for (ALL_LIST_ELEMENTS(pbrm->seqnumbers, node, nnode, pbrms)) {
-		if (pbrms)
-			if (pbrms->reason & PBR_MAP_DEL_SEQUENCE_NUMBER)
-				listnode_delete(pbrm->seqnumbers, pbrms);
+		if (!(pbrms->reason & PBR_MAP_DEL_SEQUENCE_NUMBER))
+			continue;
+
+		if (pbrms->nhg)
+			pbr_nht_delete_individual_nexthop(pbrms->parent->name,
+							  pbrms->seqno);
+
+		listnode_delete(pbrm->seqnumbers, pbrms);
 	}
 
 	if (pbrm->seqnumbers->count == 0) {
