@@ -143,6 +143,7 @@ endif
 
 if PBRD
 vtysh_scan += $(top_srcdir)/pbrd/pbr_vty.c
+vtysh_scan += $(top_srcdir)/pbrd/pbr_debug.c
 endif
 
 vtysh_cmd_FILES = $(vtysh_scan) \

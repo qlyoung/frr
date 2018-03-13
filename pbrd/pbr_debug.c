@@ -28,13 +28,30 @@
 #endif
 #include "pbrd/pbr_debug.h"
 
-#define DEBUG_PBR_MAP 0x000001
-
-/* PBR debugging records */
 struct debug pbr_dbg_map = {0, "PBR map"};
+struct debug pbr_dbg_zebra = {0, "PBR Zebra communications"};
+struct debug pbr_dbg_nht = {0, "PBR nexthop tracking"};
+struct debug pbr_dbg_event = {0, "PBR events"};
 
-struct debug *pbr_debugs[] = {&pbr_dbg_map};
+struct debug *pbr_debugs[] = {&pbr_dbg_map, &pbr_dbg_zebra, &pbr_dbg_nht,
+			      &pbr_dbg_event};
 
+const char *pbr_debugs_conflines[] = {
+	"debug pbr map",
+	"debug pbr zebra",
+	"debug pbr nht",
+	"debug pbr events",
+};
+
+/*
+ * Set or unset flags on all debugs for pbrd.
+ *
+ * flags
+ *    The flags to set
+ *
+ * set
+ *    Whether to set or unset the specified flags
+ */
 static void pbr_debug_set_all(uint32_t flags, bool set)
 {
 	for (unsigned int i = 0; i < array_size(pbr_debugs); i++) {
@@ -46,29 +63,71 @@ static void pbr_debug_set_all(uint32_t flags, bool set)
 	}
 }
 
-#if 0
-static void
-pbr_debug_config_write(struct vty *vty)
+/*
+ * Check flags on all debugs for pbrd.
+ *
+ * flags
+ *    The flags to set
+ *
+ * Returns:
+ *    The subset of the given flags that were set in all pbrd debugs
+ */
+static uint32_t pbr_debug_check_all(uint32_t flags)
 {
-	if (DEBUG_MODE_CHECK(&pbr_dbg_map, DEBUG_MODE_CONF))
-		vty_out(vty, "debug pbr map");
+	uint32_t mode = DEBUG_MODE_ALL;
+	for (unsigned int i = 0; i < array_size(pbr_debugs); i++)
+		mode &= DEBUG_MODE_CHECK(pbr_debugs[i], flags);
+	return mode;
 }
-#endif
+
+int pbr_debug_config_write(struct vty *vty)
+{
+	if (pbr_debug_check_all(DEBUG_MODE_CONF) == DEBUG_MODE_CONF) {
+		vty_out(vty, "debug pbr\n");
+		return 0;
+	}
+
+	for (unsigned int i = 0; i < array_size(pbr_debugs); i++)
+		if (DEBUG_MODE_CHECK(pbr_debugs[i], DEBUG_MODE_CONF))
+			vty_out(vty, "%s\n", pbr_debugs_conflines[i]);
+	return 0;
+}
 
 /* PBR debugging CLI ------------------------------------------------------- */
+/* clang-format off */
 
-DEFPY(debug_pbr_map, debug_pbr_map_cmd, "[no] debug pbr map [MAP]",
-      NO_STR DEBUG_STR
+DEFPY(debug_pbr,
+      debug_pbr_cmd,
+      "[no] debug pbr [{map$map|zebra$zebra|nht$nht|events$events}]",
+      NO_STR
+      DEBUG_STR
       "Policy Based Routing\n"
-      "PBR Map Name\n")
+      "Policy maps\n"
+      "PBRD <-> Zebra communications\n"
+      "Nexthop tracking\n"
+      "Events\n")
 {
 	uint32_t mode = DEBUG_NODE2MODE(vty->node);
-	DEBUG_MODE_SET(&pbr_dbg_map, mode, !!no);
+	if (map)
+		DEBUG_MODE_SET(&pbr_dbg_map, mode, !no);
+	if (zebra)
+		DEBUG_MODE_SET(&pbr_dbg_zebra, mode, !no);
+	if (nht)
+		DEBUG_MODE_SET(&pbr_dbg_nht, mode, !no);
+	if (events)
+		DEBUG_MODE_SET(&pbr_dbg_event, mode, !no);
+
+	/* no specific debug --> act on all of them */
+	if (strmatch(argv[argc - 1]->text, "pbr"))
+		pbr_debug_set_all(mode, !no);
+
 	return CMD_SUCCESS;
 }
 
+/* clang-format on */
 /* ------------------------------------------------------------------------- */
 
+static struct cmd_node debug_node = {DEBUG_NODE, "", 1};
 
 struct debug_callbacks pbr_dbg_cbs = {.debug_set_all = pbr_debug_set_all};
 
@@ -79,6 +138,8 @@ void pbr_debug_init(void)
 
 void pbr_debug_init_vty(void)
 {
-	install_element(VIEW_NODE, &debug_pbr_map_cmd);
-	install_element(CONFIG_NODE, &debug_pbr_map_cmd);
+	install_node(&debug_node, pbr_debug_config_write);
+
+	install_element(VIEW_NODE, &debug_pbr_cmd);
+	install_element(CONFIG_NODE, &debug_pbr_cmd);
 }

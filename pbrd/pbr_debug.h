@@ -24,7 +24,11 @@
 
 #include "debug.h"
 
+/* PBR debugging records */
 extern struct debug pbr_dbg_map;
+extern struct debug pbr_dbg_zebra;
+extern struct debug pbr_dbg_nht;
+extern struct debug pbr_dbg_event;
 
 /*
  * Initialize PBR debugging.
@@ -37,5 +41,13 @@ void pbr_debug_init(void);
  * Install PBR debugging VTY commands.
  */
 void pbr_debug_init_vty(void);
+
+/*
+ * Print PBR debugging configuration.
+ *
+ * vty
+ *    VTY to print debugging configuration to.
+ */
+int pbr_debug_config_write(struct vty *vty);
 
 #endif /* __PBR_DEBUG_H__ */

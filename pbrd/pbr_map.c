@@ -37,6 +37,7 @@
 #include "pbr_event.h"
 #include "pbr_zebra.h"
 #include "pbr_memory.h"
+#include "pbr_debug.h"
 
 DEFINE_MTYPE_STATIC(PBRD, PBR_MAP, "PBR Map")
 DEFINE_MTYPE_STATIC(PBRD, PBR_MAP_SEQNO, "PBR Map Sequence")
@@ -221,9 +222,9 @@ extern struct pbr_map_sequence *pbrms_lookup_unique(uint32_t unique,
 
 			for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, snode,
 						  pbrms)) {
-				zlog_debug("%s: Comparing %u to %u",
-					   __PRETTY_FUNCTION__, pbrms->unique,
-					   unique);
+				DEBUGD(&pbr_dbg_map, "%s: Comparing %u to %u",
+				       __PRETTY_FUNCTION__, pbrms->unique,
+				       unique);
 				if (pbrms->unique == unique)
 					return pbrms;
 			}
@@ -363,8 +364,9 @@ extern bool pbr_map_check_valid(const char *name)
 
 	pbrm = pbrm_find(name);
 	if (!pbrm) {
-		zlog_debug("%s: Specified PBR-MAP(%s) does not exist?",
-			   __PRETTY_FUNCTION__, name);
+		DEBUGD(&pbr_dbg_map,
+		       "%s: Specified PBR-MAP(%s) does not exist?",
+		       __PRETTY_FUNCTION__, name);
 		return false;
 	}
 
@@ -380,12 +382,11 @@ extern void pbr_map_schedule_policy_from_nhg(const char *nh_group)
 	struct listnode *node;
 
 	RB_FOREACH (pbrm, pbr_map_entry_head, &pbr_maps) {
-		zlog_debug("%s: Looking at %s", __PRETTY_FUNCTION__,
-			   pbrm->name);
+		DEBUGD(&pbr_dbg_map, "%s: Looking at %s", __PRETTY_FUNCTION__,
+		       pbrm->name);
 		for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, node, pbrms)) {
-			zlog_debug("\tNH Grp name: %s",
-				   pbrms->nhgrp_name ? pbrms->nhgrp_name
-						     : "NULL");
+			DEBUGD(&pbr_dbg_map, "\tNH Grp name: %s",
+			       pbrms->nhgrp_name ? pbrms->nhgrp_name : "NULL");
 
 			if (pbrms->nhgrp_name
 			    && (strcmp(nh_group, pbrms->nhgrp_name) == 0)) {
@@ -420,22 +421,23 @@ extern void pbr_map_policy_install(const char *name)
 	struct listnode *node;
 	bool install;
 
-	zlog_debug("%s: for %s", __PRETTY_FUNCTION__, name);
+	DEBUGD(&pbr_dbg_map, "%s: for %s", __PRETTY_FUNCTION__, name);
 	pbrm = pbrm_find(name);
 	if (!pbrm)
 		return;
 
 	install = true;
 	for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, node, pbrms)) {
-		zlog_debug("%s: Looking at what to install %s(%u) %d %d",
-			   __PRETTY_FUNCTION__, name, pbrms->seqno,
-			   pbrm->valid, pbrms->nhs_installed);
+		DEBUGD(&pbr_dbg_map,
+		       "%s: Looking at what to install %s(%u) %d %d",
+		       __PRETTY_FUNCTION__, name, pbrms->seqno, pbrm->valid,
+		       pbrms->nhs_installed);
 		if (!pbrm->valid || !pbrms->nhs_installed)
 			install = false;
 	}
 
 	if (install && pbrm->incoming->count) {
-		zlog_debug("\tInstalling");
+		DEBUGD(&pbr_dbg_map, "\tInstalling");
 		pbr_send_pbr_map(pbrm, true);
 	}
 }
@@ -448,8 +450,8 @@ extern void pbr_map_policy_delete(const char *ifname)
 
 	RB_FOREACH (pbrm, pbr_map_entry_head, &pbr_maps) {
 		for (ALL_LIST_ELEMENTS(pbrm->incoming, node, nnode, pmi)) {
-			zlog_debug("Comparing %s to %s %d", pmi->ifp->name,
-				   ifname, pmi->delete);
+			DEBUGD(&pbr_dbg_map, "Comparing %s to %s %d",
+			       pmi->ifp->name, ifname, pmi->delete);
 			if (strcmp(ifname, pmi->ifp->name) != 0)
 				continue;
 
@@ -511,9 +513,10 @@ extern void pbr_map_check(const char *name, uint32_t seqno)
 	struct listnode *node;
 	struct pbr_map *pbrm;
 
-	zlog_debug("%s: for %s(%u)", __PRETTY_FUNCTION__, name, seqno);
+	DEBUGD(&pbr_dbg_map, "%s: for %s(%u)", __PRETTY_FUNCTION__, name,
+	       seqno);
 	if (pbr_map_check_valid(name))
-		zlog_debug("We are totally valid %s\n", name);
+		DEBUGD(&pbr_dbg_map, "We are totally valid %s\n", name);
 
 	pbrm = pbrm_find(name);
 	if (!pbrm)
@@ -523,12 +526,18 @@ extern void pbr_map_check(const char *name, uint32_t seqno)
 		if (seqno != pbrms->seqno)
 			continue;
 
+		DEBUGD(&pbr_dbg_map, "%s: Installing %s(%u) reason: %" PRIu64,
+		       __PRETTY_FUNCTION__, name, seqno, pbrms->reason);
+
 		if (pbrms->reason == PBR_MAP_VALID_SEQUENCE_NUMBER) {
 			struct pbr_event *pbre;
 
-			zlog_debug("%s: Installing %s(%u) reason: %" PRIu64,
-				   __PRETTY_FUNCTION__, name, seqno,
-				   pbrms->reason);
+			DEBUGD(&pbr_dbg_map,
+			       "%s: Installing %s(%u) reason: %" PRIu64,
+			       __PRETTY_FUNCTION__, name, seqno, pbrms->reason);
+			DEBUGD(&pbr_dbg_map,
+			       "\tSending PBR_MAP_POLICY_INSTALL event");
+
 			pbre = pbr_event_new(PBR_MAP_POLICY_INSTALL,
 					     pbrm->name);
 			pbre->event = PBR_MAP_POLICY_INSTALL;
@@ -538,9 +547,9 @@ extern void pbr_map_check(const char *name, uint32_t seqno)
 
 			break;
 		} else {
-			zlog_debug("%s: Removing %s(%u) reason: %" PRIu64,
-				   __PRETTY_FUNCTION__, name, seqno,
-				   pbrms->reason);
+			DEBUGD(&pbr_dbg_map,
+			       "%s: Removing %s(%u) reason: %" PRIu64,
+			       __PRETTY_FUNCTION__, name, seqno, pbrms->reason);
 			pbr_send_pbr_map(pbrm, false);
 			break;
 		}
@@ -553,8 +562,9 @@ extern void pbr_map_install(const char *name)
 
 	pbrm = pbrm_find(name);
 	if (!pbrm) {
-		zlog_debug("%s: Specified PBR-MAP(%s) does not exist?",
-			   __PRETTY_FUNCTION__, name);
+		DEBUGD(&pbr_dbg_map,
+		       "%s: Specified PBR-MAP(%s) does not exist?",
+		       __PRETTY_FUNCTION__, name);
 		return;
 	}
 
@@ -574,8 +584,9 @@ extern void pbr_map_add_interfaces(const char *name)
 
 	pbrm = pbrm_find(name);
 	if (!pbrm) {
-		zlog_debug("%s: Specified PBR-MAP(%s) does not exist?",
-			   __PRETTY_FUNCTION__, name);
+		DEBUGD(&pbr_dbg_map,
+		       "%s: Specified PBR-MAP(%s) does not exist?",
+		       __PRETTY_FUNCTION__, name);
 		return;
 	}
 
@@ -597,8 +608,9 @@ extern void pbr_map_check_policy_change(const char *name)
 
 	pbrm = pbrm_find(name);
 	if (!pbrm) {
-		zlog_debug("%s: Specified PBR-MAP(%s) does not exist?",
-			   __PRETTY_FUNCTION__, name);
+		DEBUGD(&pbr_dbg_map,
+		       "%s: Specified PBR-MAP(%s) does not exist?",
+		       __PRETTY_FUNCTION__, name);
 		return;
 	}
 

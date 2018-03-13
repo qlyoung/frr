@@ -34,6 +34,7 @@
 #include "pbrd/pbr_event.h"
 #include "pbrd/pbr_zebra.h"
 #include "pbrd/pbr_memory.h"
+#include "pbrd/pbr_debug.h"
 
 DEFINE_MTYPE_STATIC(PBRD, PBR_NHG, "PBR Nexthop Groups")
 
@@ -53,7 +54,9 @@ static void *pbr_nh_alloc(void *p)
 	new = XCALLOC(MTYPE_PBR_NHG, sizeof(*new));
 	memcpy(&new->nexthop, &pnhc->nexthop, sizeof(struct nexthop));
 
-	zlog_debug("Sending nexthop to Zebra");
+	DEBUGD(&pbr_dbg_nht, "%s: Sending nexthop to Zebra",
+	       __PRETTY_FUNCTION__);
+
 	pbr_send_rnh(&new->nexthop, true);
 
 	new->valid = false;
@@ -124,7 +127,8 @@ void pbr_nhgroup_add_cb(const char *name)
 	pbre = pbr_event_new(PBR_NHG_NEW, name);
 
 	pbr_event_enqueue(pbre);
-	zlog_debug("Received ADD cb for %s", name);
+	DEBUGD(&pbr_dbg_nht, "%s: Received ADD cb for %s", __PRETTY_FUNCTION__,
+	       name);
 }
 
 void pbr_nhgroup_add_nexthop_cb(const char *name)
@@ -134,7 +138,8 @@ void pbr_nhgroup_add_nexthop_cb(const char *name)
 	pbre = pbr_event_new(PBR_NHG_ADD_NEXTHOP, name);
 
 	pbr_event_enqueue(pbre);
-	zlog_debug("Received NEXTHOP_ADD cb for %s", name);
+	DEBUGD(&pbr_dbg_nht, "%s: Received NEXTHOP_ADD cb for %s",
+	       __PRETTY_FUNCTION__, name);
 }
 
 void pbr_nhgroup_del_nexthop_cb(const char *name)
@@ -144,7 +149,8 @@ void pbr_nhgroup_del_nexthop_cb(const char *name)
 	pbre = pbr_event_new(PBR_NHG_DEL_NEXTHOP, name);
 
 	pbr_event_enqueue(pbre);
-	zlog_debug("Received NEXTHOP_DEL cb for %s", name);
+	DEBUGD(&pbr_dbg_nht, "%s: Received NEXTHOP_DEL cb for %s",
+	       __PRETTY_FUNCTION__, name);
 }
 
 void pbr_nhgroup_delete_cb(const char *name)
@@ -154,7 +160,8 @@ void pbr_nhgroup_delete_cb(const char *name)
 	pbre = pbr_event_new(PBR_NHG_DELETE, name);
 
 	pbr_event_enqueue(pbre);
-	zlog_debug("Received DELETE cb for %s", name);
+	DEBUGD(&pbr_dbg_nht, "%s: Received DELETE cb for %s",
+	       __PRETTY_FUNCTION__, name);
 }
 
 #if 0
@@ -172,9 +179,8 @@ static void pbr_nht_find_nhg_from_table_install(struct hash_backet *b,
 	uint32_t *table_id = (uint32_t *)data;
 
 	if (pnhgc->table_id == *table_id) {
-		zlog_debug("%s: Tableid(%u) matches %s",
-			   __PRETTY_FUNCTION__,
-			   *table_id, pnhgc->name);
+		DEBUGD(&pbr_dbg_nht, "%s: Table ID (%u) matches %s",
+		       __PRETTY_FUNCTION__, *table_id, pnhgc->name);
 		pnhgc->installed = true;
 		pbr_map_schedule_policy_from_nhg(pnhgc->name);
 	}
@@ -198,36 +204,54 @@ void pbr_nht_route_removed_for_table(uint32_t table_id)
 		     &table_id);
 }
 
+/*
+ * Loop through all nexthops in a nexthop group to check that they are all the
+ * same. If they are not all the same, log this peculiarity.
+ *
+ * nhg
+ *    The nexthop group to check
+ *
+ * Returns:
+ *    - AFI of last nexthop in the group
+ *    - AFI_MAX on error
+ */
 static afi_t pbr_nht_which_afi(struct nexthop_group nhg)
 {
 	struct nexthop *nexthop;
 	afi_t install_afi = AFI_MAX;
+	bool v6, v4, bh;
+	v6 = v4 = bh = false;
 
 	for (ALL_NEXTHOPS(nhg, nexthop)) {
-		zlog_debug("Handling stuff\n");
-
 		switch (nexthop->type) {
 		case NEXTHOP_TYPE_IFINDEX:
 			break;
 		case NEXTHOP_TYPE_IPV4:
 		case NEXTHOP_TYPE_IPV4_IFINDEX:
-			if (install_afi == AFI_IP6)
-				zlog_debug("AFI's are both?");
+			v6 = true;
 			install_afi = AFI_IP;
 			break;
 		case NEXTHOP_TYPE_IPV6:
 		case NEXTHOP_TYPE_IPV6_IFINDEX:
-			if (install_afi == AFI_IP)
-				zlog_debug("AFI's are both?");
+			v4 = true;
 			install_afi = AFI_IP6;
 			break;
 		case NEXTHOP_TYPE_BLACKHOLE:
-			if (install_afi == AFI_IP || install_afi == AFI_IP6)
-				zlog_debug("AFI's are wrong?");
+			bh = true;
 			install_afi = AFI_MAX;
 			break;
 		}
 	}
+
+	if (!bh && v6 && v4)
+		DEBUGD(&pbr_dbg_nht,
+		       "%s: Saw both V6 and V4 nexthops...using %s",
+		       __PRETTY_FUNCTION__, afi2str(install_afi));
+	if (bh && (v6 || v4))
+		DEBUGD(&pbr_dbg_nht,
+		       "%s: Saw blackhole nexthop(s) with %s%s%s nexthop(s), using AFI_MAX.",
+		       __PRETTY_FUNCTION__, v4 ? "v4" : "",
+		       (v4 && v6) ? " and " : "", v6 ? "v6" : "");
 
 	return install_afi;
 }
@@ -271,7 +295,9 @@ void pbr_nht_change_group(const char *name)
 	pnhgc = hash_lookup(pbr_nhg_hash, &find);
 
 	if (!pnhgc) {
-		zlog_debug("Something wrong here, FUS!");
+		DEBUGD(&pbr_dbg_nht,
+		       "%s: Could not find nexthop-group cache w/ name '%s'",
+		       __PRETTY_FUNCTION__, name);
 		return;
 	}
 
@@ -294,8 +320,9 @@ static void *pbr_nhgc_alloc(void *p)
 
 	strcpy(new->name, pnhgc->name);
 	new->table_id = pbr_nht_get_next_tableid();
-	zlog_debug("%s: NHT: %s assigned table-id: %u",
-		   __PRETTY_FUNCTION__, new->name, new->table_id);
+
+	DEBUGD(&pbr_dbg_nht, "%s: NHT: %s assigned Table ID: %u",
+	       __PRETTY_FUNCTION__, new->name, new->table_id);
 
 	new->nhh = hash_create_size(8, pbr_nh_hash_key, pbr_nh_hash_equal,
 				    "PBR NH Cache Hash");
@@ -366,13 +393,15 @@ void pbr_nht_add_group(const char *name)
 	nhgc = nhgc_find(name);
 
 	if (!nhgc) {
-		zlog_warn("Cannot find group %s to add", name);
+		zlog_warn("%s: Could not find group %s to add",
+			  __PRETTY_FUNCTION__, name);
 		return;
 	}
 
 	strcpy(lookup.name, name);
 	pnhgc = hash_get(pbr_nhg_hash, &lookup, pbr_nhgc_alloc);
-	zlog_debug("Retrieved %p", pnhgc);
+	DEBUGD(&pbr_dbg_nht, "%s: Retrieved NHGC @ %p", __PRETTY_FUNCTION__,
+	       pnhgc);
 
 	for (ALL_NEXTHOPS(nhgc->nhg, nhop)) {
 		struct pbr_nexthop_cache lookup;
@@ -406,7 +435,7 @@ void pbr_nht_delete_group(const char *name)
 
 bool pbr_nht_nexthop_valid(struct nexthop_group *nhg)
 {
-	zlog_debug("%s %p", __PRETTY_FUNCTION__, nhg);
+	DEBUGD(&pbr_dbg_nht, "%s: %p", __PRETTY_FUNCTION__, nhg);
 	return true;
 }
 
@@ -415,13 +444,14 @@ bool pbr_nht_nexthop_group_valid(const char *name)
 	struct pbr_nexthop_group_cache *pnhgc;
 	struct pbr_nexthop_group_cache lookup;
 
-	zlog_debug("%s(%s)", __PRETTY_FUNCTION__, name);
+	DEBUGD(&pbr_dbg_nht, "%s: %s", __PRETTY_FUNCTION__, name);
 
 	strcpy(lookup.name, name);
 	pnhgc = hash_get(pbr_nhg_hash, &lookup, NULL);
 	if (!pnhgc)
 		return false;
-	zlog_debug("\t%d %d", pnhgc->valid, pnhgc->installed);
+	DEBUGD(&pbr_dbg_nht, "%s: \t%d %d", __PRETTY_FUNCTION__, pnhgc->valid,
+	       pnhgc->installed);
 	if (pnhgc->valid && pnhgc->installed)
 		return true;
 
@@ -457,9 +487,10 @@ static void pbr_nht_individual_nexthop_update_lookup(struct hash_backet *b,
 		break;
 	}
 
-	zlog_debug("\tFound %s: old: %d new: %d",
-		   prefix2str(&pnhi->nhr->prefix, buf, sizeof(buf)), old_valid,
-		   pnhc->valid);
+	DEBUGD(&pbr_dbg_nht, "\tFound %s: old: %d new: %d",
+	       prefix2str(&pnhi->nhr->prefix, buf, sizeof(buf)), old_valid,
+	       pnhc->valid);
+
 	if (old_valid != pnhc->valid) {
 		struct pbr_event *pbre;
 
@@ -575,8 +606,9 @@ uint32_t pbr_nht_get_table(const char *name)
 	pnhgc = hash_lookup(pbr_nhg_hash, &find);
 
 	if (!pnhgc) {
-		zlog_debug("%s: Something has gone terribly wrong for %s",
-			   __PRETTY_FUNCTION__, name);
+		DEBUGD(&pbr_dbg_nht,
+		       "%s: Could not find nexthop-group cache w/ name '%s'",
+		       __PRETTY_FUNCTION__, name);
 		return 5000;
 	}
 

@@ -29,6 +29,7 @@
 #include "nexthop_group.h"
 #include "log.h"
 #include "json.h"
+#include "debug.h"
 
 #include "pbrd/pbr_nht.h"
 #include "pbrd/pbr_map.h"

@@ -31,6 +31,7 @@
 #include "pbrd/pbr_map.h"
 #include "pbrd/pbr_nht.h"
 #include "pbrd/pbr_memory.h"
+#include "pbrd/pbr_debug.h"
 
 DEFINE_MTYPE_STATIC(PBRD, PBR_EVENT, "Event WorkQueue")
 
@@ -125,9 +126,8 @@ static wq_item_status pbr_event_process_wq(struct work_queue *wq, void *data)
 	struct pbr_event *pbre = (struct pbr_event *)data;
 	char buffer[256];
 
-	zlog_debug("%s: Handling %s",
-		   __PRETTY_FUNCTION__,
-		   pbr_event_wqentry2str(pbre, buffer, sizeof(buffer)));
+	DEBUGD(&pbr_dbg_event, "%s: Handling event %s", __PRETTY_FUNCTION__,
+	       pbr_event_wqentry2str(pbre, buffer, sizeof(buffer)));
 
 	switch (pbre->event) {
 	case PBR_NHG_NEW:
