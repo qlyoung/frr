@@ -500,8 +500,9 @@ void pbr_send_pbr_map(struct pbr_map *pbrm, bool install)
 	tspot = stream_get_endp(s);
 	stream_putl(s, 0);
 	for (ALL_LIST_ELEMENTS_RO(pbrm->incoming, inode, pmi)) {
-		zlog_debug("\tInstalling %s %d %s",
-			   pbrm->name, install, pmi->ifp->name);
+		zlog_debug("\t%s %s %d %s %u",
+			   install ? "Installing" : "Deleting", pbrm->name,
+			   install, pmi->ifp->name, pmi->delete);
 		if (!install && pmi->delete) {
 			for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, snode,
 						  pbrms)) {
@@ -513,21 +514,33 @@ void pbr_send_pbr_map(struct pbr_map *pbrm, bool install)
 		}
 
 		for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, snode, pbrms)) {
-			zlog_debug("\tSeqno: %u %ld",
-				   pbrms->seqno, pbrms->reason);
+			zlog_debug("\tSeqno: %u %ld valid %u", pbrms->seqno,
+				   pbrms->reason, pbrm->valid);
+
 			if (!install &&
 			    !(pbrms->reason & PBR_MAP_DEL_SEQUENCE_NUMBER))
 				continue;
 
-			zlog_debug("\t Seq: %u", pbrms->seqno);
+			if (!install && !pbrms->installed)
+				continue;
+
+			if (install && pbrms->installed)
+				continue;
+
+			zlog_debug("\t Seq: %u ifp %s", pbrms->seqno,
+				   pmi->ifp->name);
 			pbr_encode_pbr_map_sequence(s, pbrms, pmi->ifp);
 			total++;
 		}
 	}
 
-	zlog_debug("Putting %u at %zu whta the fuck", total, tspot);
+	zlog_debug("Putting %u at %zu ", total, tspot);
 	stream_putl_at(s, tspot, total);
 	stream_putw_at(s, 0, stream_get_endp(s));
 
+	if (!total) {
+		stream_reset(s);
+		return;
+	}
 	zclient_send_message(zclient);
 }

@@ -46,12 +46,22 @@ enum pbr_events {
 	/*
 	 * A individual nexthop has been added
 	 */
-	PBR_NEXTHOP_ADD,
+	PBR_MAP_NEXTHOP_ADD,
 
 	/*
 	 * A individual nexthop has been deleted
 	 */
-	PBR_NEXTHOP_DELETE,
+	PBR_MAP_NEXTHOP_DELETE,
+
+	/*
+	 * A nexthop group has been added to a pbr-map
+	 */
+	PBR_MAP_NHG_ADD,
+
+	/*
+	 * A nexthop group has been deleted from a pbr-map
+	 */
+	PBR_MAP_NHG_DELETE,
 
 	/*
 	 * A new pbr-map has been created
@@ -111,6 +121,11 @@ struct pbr_event {
  * Assume this memory is owned by the event subsystem.
  */
 extern struct pbr_event *pbr_event_new(void);
+
+/*
+ * Free the associated pbr_event item
+ */
+extern void pbr_event_free(struct pbr_event **pbre);
 
 /*
  * Enqueue an event for later processing

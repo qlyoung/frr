@@ -173,14 +173,34 @@ DEFPY(pbr_map_nexthop_group, pbr_map_nexthop_group_cmd,
 		vty_out(vty, "PBR-MAP will not be applied until it is created\n");
 	}
 
-	if (pbrms->nhgrp_name)
-		XFREE(MTYPE_TMP, pbrms->nhgrp_name);
-
-	if (!no)
-		pbrms->nhgrp_name = XSTRDUP(MTYPE_TMP, name);
-
 	pbre = pbr_event_new();
-	pbre->event = PBR_MAP_MODIFY;
+
+	if (no) {
+		if (pbrms->nhgrp_name && strcmp(name, pbrms->nhgrp_name) == 0)
+			pbre->event = PBR_MAP_NHG_DELETE;
+		else {
+			vty_out(vty,
+				"Nexthop Group specified: %s does not exist to remove",
+				name);
+			pbr_event_free(&pbre);
+			return CMD_WARNING;
+		}
+	} else {
+		if (pbrms->nhgrp_name) {
+			if (strcmp(name, pbrms->nhgrp_name) != 0) {
+				vty_out(vty,
+					"Please delete current nexthop group before modifying current one");
+				pbr_event_free(&pbre);
+				return CMD_WARNING;
+			}
+
+			pbr_event_free(&pbre);
+			return CMD_SUCCESS;
+		}
+		pbrms->nhgrp_name = XSTRDUP(MTYPE_TMP, name);
+		pbre->event = PBR_MAP_NHG_ADD;
+	}
+
 	pbre->seqno = pbrms->seqno;
 	strlcpy(pbre->name, pbrms->parent->name, sizeof(pbre->name));
 	pbr_event_enqueue(pbre);
@@ -192,7 +212,7 @@ DEFPY(pbr_map_nexthop, pbr_map_nexthop_cmd,
       "[no] set nexthop <A.B.C.D|X:X::X:X>$addr [INTERFACE]$intf [nexthop-vrf NAME$name]",
       NO_STR
       "Set for the PBR-MAP\n"
-      "Specify one of the nexthops in this ECMP group\n"
+      "Specify one of the nexthops in this map\n"
       "v4 Address\n"
       "v6 Address\n"
       "Interface to use\n"
@@ -275,9 +295,8 @@ DEFPY(pbr_map_nexthop, pbr_map_nexthop_cmd,
 		if (nh) {
 			// nexthop_del(pbrms->nhg, nh);
 			// nexthop_free(nh);
-
 			pbre = pbr_event_new();
-			pbre->event = PBR_NEXTHOP_DELETE;
+			pbre->event = PBR_MAP_NEXTHOP_DELETE;
 			pbre->seqno = pbrms->seqno;
 			strlcpy(pbre->name, pbrms->parent->name,
 				sizeof(pbre->name));
@@ -298,7 +317,7 @@ DEFPY(pbr_map_nexthop, pbr_map_nexthop_cmd,
 		nexthop_add(&pbrms->nhg->nexthop, nh);
 
 		pbre = pbr_event_new();
-		pbre->event = PBR_NEXTHOP_ADD;
+		pbre->event = PBR_MAP_NEXTHOP_ADD;
 		pbre->seqno = pbrms->seqno;
 		strlcpy(pbre->name, pbrms->parent->name, sizeof(pbre->name));
 		pbr_event_enqueue(pbre);
@@ -449,11 +468,11 @@ DEFPY (show_pbr_map,
 					pbr_nht_get_installed(
 						pbrms->nhgrp_name));
 			} else if (pbrms->nhg) {
-				vty_out(vty, "\t");
+				vty_out(vty, "     ");
 				nexthop_group_write_nexthop(
 					vty, pbrms->nhg->nexthop);
 				vty_out(vty,
-					"\t\tInstalled: %u(%d) Tableid: %d\n",
+					"\tInstalled: %u(%d) Tableid: %d\n",
 					pbrms->nhs_installed,
 					pbr_nht_get_installed(
 						pbrms->internal_nhg_name),

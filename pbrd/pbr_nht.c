@@ -166,7 +166,7 @@ void pbr_nhgroup_delete_cb(const char *name)
 	strlcpy(pbre->name, name, sizeof(pbre->name));
 
 	pbr_event_enqueue(pbre);
-	zlog_debug("Recieved DELETE cb for %s", name);
+	zlog_debug("Received DELETE cb for %s", name);
 }
 
 #if 0
@@ -397,6 +397,19 @@ void pbr_nht_add_group(const char *name)
 
 void pbr_nht_delete_group(const char *name)
 {
+	struct pbr_map_sequence *pbrms;
+	struct listnode *snode;
+	struct pbr_map *pbrm;
+
+	RB_FOREACH (pbrm, pbr_map_entry_head, &pbr_maps) {
+		for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, snode, pbrms)) {
+			if (pbrms->nhgrp_name
+			    && strcmp(pbrms->nhgrp_name, name) == 0) {
+				pbrms->reason |= PBR_MAP_INVALID_NO_NEXTHOPS;
+				pbrm->valid = false;
+			}
+		}
+	}
 }
 
 bool pbr_nht_nexthop_valid(struct nexthop_group *nhg)

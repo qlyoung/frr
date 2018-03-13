@@ -477,6 +477,7 @@ extern void pbr_map_check_nh_group_change(const char *nh_group)
 	struct listnode *node;
 	bool found_name;
 
+	zlog_warn("*** %s for %s ***", __func__, nh_group);
 	RB_FOREACH (pbrm, pbr_map_entry_head, &pbr_maps) {
 		for (ALL_LIST_ELEMENTS_RO(pbrm->seqnumbers, node, pbrms)) {
 			found_name = false;
@@ -489,8 +490,11 @@ extern void pbr_map_check_nh_group_change(const char *nh_group)
 
 			if (found_name) {
 				bool original = pbrm->valid;
+				zlog_warn("*** %s pbrm->valid is %u ***",
+					  __func__, pbrm->valid);
 
 				pbr_map_check_valid_internal(pbrm);
+
 				if (original != pbrm->valid) {
 					struct pbr_event *pbre;
 
@@ -524,18 +528,25 @@ extern void pbr_map_check(const char *name, uint32_t seqno)
 		if (seqno != pbrms->seqno)
 			continue;
 
-		zlog_debug("%s: Installing %s(%u) reason: %" PRIu64,
-			   __PRETTY_FUNCTION__,
-			   name, seqno, pbrms->reason);
 		if (pbrms->reason == PBR_MAP_VALID_SEQUENCE_NUMBER) {
 			struct pbr_event *pbre;
 
-			zlog_debug("\tSending PBR_MAP_POLICY_INSTALL event");
+			zlog_debug("%s: Installing %s(%u) reason: %" PRIu64,
+				   __PRETTY_FUNCTION__, name, seqno,
+				   pbrms->reason);
 			pbre = pbr_event_new();
 			pbre->event = PBR_MAP_POLICY_INSTALL;
 			strcpy(pbre->name, pbrm->name);
 
 			pbr_event_enqueue(pbre);
+
+			break;
+		} else {
+			zlog_debug("%s: Removing %s(%u) reason: %" PRIu64,
+				   __PRETTY_FUNCTION__, name, seqno,
+				   pbrms->reason);
+			pbr_send_pbr_map(pbrm, false);
+			break;
 		}
 	}
 }
