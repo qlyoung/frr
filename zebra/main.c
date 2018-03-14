@@ -36,6 +36,7 @@
 #include "vrf.h"
 #include "logicalrouter.h"
 #include "libfrr.h"
+#include "frr_pthread.h"
 
 #include "zebra/rib.h"
 #include "zebra/zserv.h"
@@ -364,6 +365,8 @@ int main(int argc, char **argv)
 
 	/* Needed for BSD routing socket. */
 	pid = getpid();
+
+	frr_pthread_init();
 
 	/* This must be done only after locking pidfile (bug #403). */
 	zebra_zserv_socket_init(zserv_path);

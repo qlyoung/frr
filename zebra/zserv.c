@@ -43,6 +43,7 @@
 #include "vrf.h"
 #include "libfrr.h"
 #include "sockopt.h"
+#include "frr_pthread.h"
 
 #include "zebra/zserv.h"
 #include "zebra/zebra_ns.h"
@@ -75,8 +76,12 @@ static void zebra_event(struct zserv *client, enum event event);
 
 int zebra_server_send_message(struct zserv *client, struct stream *msg)
 {
-	stream_fifo_push(client->obuf_fifo, msg);
-	zebra_event(client, ZEBRA_WRITE);
+	pthread_mutex_lock(&client->obuf_mtx);
+	{
+		stream_fifo_push(client->obuf_fifo, msg);
+		zebra_event(client, ZEBRA_WRITE);
+	}
+	pthread_mutex_unlock(&client->obuf_mtx);
 	return 0;
 }
 
@@ -3057,6 +3062,10 @@ static void zebra_client_free(struct zserv *client)
 	if (client->wb)
 		buffer_free(client->wb);
 
+	/* Free buffer mutexes */
+	pthread_mutex_destroy(&client->obuf_mtx);
+	pthread_mutex_destroy(&client->ibuf_mtx);
+
 	/* Release threads. */
 	if (client->t_read)
 		thread_cancel(client->t_read);
@@ -3078,10 +3087,27 @@ static void zebra_client_free(struct zserv *client)
 }
 
 /*
+ * Task scheduled by client thread on main thread when it wants to close itself.
+ */
+static int zebra_client_handle_close(struct thread *thread)
+{
+	struct zserv *client = THREAD_ARG(thread);
+        frr_pthread_stop(client->pthread, NULL);
+        listnode_delete(zebrad.client_list, client);
+        zebra_client_free(client);
+        return 0;
+}
+
+/*
  * Called from client thread to terminate itself.
  */
 static void zebra_client_close(struct zserv *client)
 {
+	THREAD_OFF(client->t_read);
+	THREAD_OFF(client->t_write);
+	THREAD_OFF(client->t_suicide);
+	thread_add_event(zebrad.master, zebra_client_handle_close, client, 0,
+			 NULL);
 	listnode_delete(zebrad.client_list, client);
 	zebra_client_free(client);
 }
@@ -3101,6 +3127,8 @@ static void zebra_client_create(int sock)
 	client->obuf_fifo = stream_fifo_new();
 	client->ibuf_work = stream_new(ZEBRA_MAX_PACKET_SIZ);
 	client->obuf_work = stream_new(ZEBRA_MAX_PACKET_SIZ);
+	pthread_mutex_init(&client->ibuf_mtx, NULL);
+	pthread_mutex_init(&client->obuf_mtx, NULL);
 	client->wb = buffer_new(0);
 
 	/* Set table number. */
@@ -3121,19 +3149,20 @@ static void zebra_client_create(int sock)
 	/* Add this client to linked list. */
 	listnode_add(zebrad.client_list, client);
 
+	struct frr_pthread_attr zclient_pthr_attrs = {
+		.id = frr_pthread_get_id(),
+		.start = frr_pthread_attr_default.start,
+		.stop = frr_pthread_attr_default.stop
+	};
+	client->pthread = frr_pthread_new(&zclient_pthr_attrs, "Zebra API client thread");
+
 	zebra_vrf_update_all(client);
 
 	/* start read loop */
 	zebra_event(client, ZEBRA_READ);
-}
 
-static int zserv_delayed_close(struct thread *thread)
-{
-	struct zserv *client = THREAD_ARG(thread);
-
-	client->t_suicide = NULL;
-	zebra_client_close(client);
-	return 0;
+	/* start pthread */
+	frr_pthread_run(client->pthread, NULL);
 }
 
 /*
@@ -3181,7 +3210,7 @@ static int zserv_flush_data(struct thread *thread)
 		break;
 	case BUFFER_PENDING:
 		client->t_write = NULL;
-		thread_add_write(zebrad.master, zserv_flush_data, client,
+		thread_add_write(client->pthread->master, zserv_flush_data, client,
 				 client->sock, &client->t_write);
 		break;
 	case BUFFER_EMPTY:
@@ -3208,7 +3237,12 @@ static int zserv_write(struct thread *thread)
 	if (client->is_synchronous)
 		return 0;
 
-	msg = stream_fifo_pop(client->obuf_fifo);
+	pthread_mutex_lock(&client->obuf_mtx);
+	{
+		msg = stream_fifo_pop(client->obuf_fifo);
+	}
+	pthread_mutex_unlock(&client->obuf_mtx);
+
 	stream_set_getp(msg, 0);
 	client->last_write_cmd = stream_getw_from(msg, 6);
 
@@ -3229,15 +3263,14 @@ static int zserv_write(struct thread *thread)
 		 * the client to be deleted.
 		 */
 		client->t_suicide = NULL;
-		thread_add_event(zebrad.master, zserv_delayed_close, client, 0,
-				 &client->t_suicide);
+		zebra_client_close(client);
 		return -1;
 	case BUFFER_EMPTY:
 		THREAD_OFF(client->t_write);
 		break;
 	case BUFFER_PENDING:
-		thread_add_write(zebrad.master, zserv_flush_data, client,
-				 client->sock, &client->t_write);
+		thread_add_write(client->pthread->master, zserv_flush_data,
+				 client, client->sock, &client->t_write);
 		break;
 	}
 
@@ -3276,8 +3309,14 @@ static int zserv_process_messages(struct thread *thread)
 	struct stream *msg;
 	bool hdrvalid;
 
+	int p2p = zebrad.packets_to_process;
+
 	do {
-		msg = stream_fifo_pop(client->ibuf_fifo);
+		pthread_mutex_lock(&client->ibuf_mtx);
+		{
+			msg = stream_fifo_pop(client->ibuf_fifo);
+		}
+		pthread_mutex_unlock(&client->ibuf_mtx);
 
 		/* break if out of messages */
 		if (!msg)
@@ -3305,7 +3344,7 @@ static int zserv_process_messages(struct thread *thread)
 		/* process commands */
 		zserv_handle_commands(client, &hdr, msg, zvrf);
 
-	} while (msg);
+	} while (msg && --p2p);
 
 	return 0;
 }
@@ -3428,7 +3467,11 @@ static int zserv_read(struct thread *thread)
 		stream_set_getp(client->ibuf_work, 0);
 		struct stream *msg = stream_dup(client->ibuf_work);
 
-		stream_fifo_push(client->ibuf_fifo, msg);
+		pthread_mutex_lock(&client->ibuf_mtx);
+		{
+			stream_fifo_push(client->ibuf_fifo, msg);
+		}
+		pthread_mutex_unlock(&client->ibuf_mtx);
 
 		if (client->t_suicide)
 			goto zread_fail;
@@ -3459,15 +3502,17 @@ static void zebra_event(struct zserv *client, enum event event)
 {
 	switch (event) {
 	case ZEBRA_READ:
-		thread_add_read(zebrad.master, zserv_read, client, client->sock,
-				&client->t_read);
+		thread_add_read(client->pthread->master, zserv_read, client,
+				client->sock, &client->t_read);
 		break;
 	case ZEBRA_WRITE:
-		thread_add_write(zebrad.master, zserv_write, client,
+		thread_add_write(client->pthread->master, zserv_write, client,
 				 client->sock, &client->t_write);
 		break;
 	}
 }
+
+/* Main thread lifecycle ----------------------------------------------------*/
 
 /* Accept code of zebra server socket. */
 static int zebra_accept(struct thread *thread)
