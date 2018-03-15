@@ -43,69 +43,6 @@ enum pbr_events {
 	 */
 	PBR_NHG_DELETE,
 
-	/*
-	 * A individual nexthop has been added
-	 */
-	PBR_MAP_NEXTHOP_ADD,
-
-	/*
-	 * A individual nexthop has been deleted
-	 */
-	PBR_MAP_NEXTHOP_DELETE,
-
-	/*
-	 * A nexthop group has been added to a pbr-map
-	 */
-	PBR_MAP_NHG_ADD,
-
-	/*
-	 * A nexthop group has been deleted from a pbr-map
-	 */
-	PBR_MAP_NHG_DELETE,
-
-	/*
-	 * A new pbr-map has been created
-	 */
-	PBR_MAP_ADD,
-
-	/*
-	 * The pbr-map has been modified in some fashion
-	 */
-	PBR_MAP_MODIFY,
-
-	/*
-	 * The pbr-map has been deleted from the system
-	 */
-	PBR_MAP_DELETE,
-
-	/*
-	 * Start the sequence of events to install/remove the policy
-	 * from being installed
-	 */
-	PBR_MAP_INSTALL,
-
-	/*
-	 * We believe we have gotten enough information to actually
-	 * install the rule portion, since the nexthops are installed
-	 */
-	PBR_MAP_POLICY_INSTALL,
-
-	/*
-	 * Callbacks for a Nexthop in a nexthop group has been
-	 * changed in some fashion
-	 */
-	PBR_NH_CHANGED,
-
-	/*
-	 * Callback for when a policy has been applied to an interface
-	 */
-	PBR_POLICY_CHANGED,
-
-	/*
-	 * Callback for when a interface has been issued a no
-	 * policy command
-	 */
-	PBR_POLICY_DELETED,
 };
 
 struct pbr_event {
