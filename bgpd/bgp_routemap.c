@@ -2992,6 +2992,9 @@ static void bgp_route_map_process_update(struct bgp *bgp, const char *rmap_name,
 
 	map = route_map_lookup_by_name(rmap_name);
 
+	if (!map)
+		return;
+
 	for (ALL_LIST_ELEMENTS(bgp->peer, node, nnode, peer)) {
 
 		/* Ignore dummy peer-group structure */
@@ -3108,12 +3111,15 @@ static void bgp_route_map_process_update(struct bgp *bgp, const char *rmap_name,
 			bgp_evpn_advertise_type5_routes(bgp, afi, safi);
 		}
 	}
+
+	route_map_clear_updated(map);
 }
 
-static int bgp_route_map_process_update_cb(char *rmap_name)
+static int bgp_route_map_process_update_cb(struct thread *thread)
 {
 	struct listnode *node, *nnode;
 	struct bgp *bgp;
+	char *rmap_name = THREAD_ARG(thread);
 
 	for (ALL_LIST_ELEMENTS(bm->bgp, node, nnode, bgp)) {
 		bgp_route_map_process_update(bgp, rmap_name, 1);
@@ -3126,6 +3132,8 @@ static int bgp_route_map_process_update_cb(char *rmap_name)
 
 	vpn_policy_routemap_event(rmap_name);
 
+	XFREE(MTYPE_TMP, rmap_name);
+
 	return 0;
 }
 
@@ -3133,7 +3141,7 @@ int bgp_route_map_update_timer(struct thread *thread)
 {
 	bm->t_rmap_update = NULL;
 
-	route_map_walk_update_list(bgp_route_map_process_update_cb);
+	route_map_walk_update_list(bm->master, bgp_route_map_process_update_cb);
 
 	return (0);
 }

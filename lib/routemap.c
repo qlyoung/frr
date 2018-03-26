@@ -807,17 +807,26 @@ static struct route_map *route_map_get(const char *name)
 	return map;
 }
 
-void route_map_walk_update_list(int (*route_map_update_fn)(char *name))
+void route_map_walk_update_list(struct thread_master *m,
+				int (*route_map_update_fn)(struct thread *))
 {
 	struct route_map *node;
 	struct route_map *nnode = NULL;
 
 	for (node = route_map_master.head; node; node = nnode) {
 		if (node->to_be_processed) {
-			/* DD: Should we add any thread yield code here */
-			route_map_update_fn(node->name);
+			char *rmap_name = XSTRDUP(MTYPE_TMP, node->name);
+			/*
+			 * If a user configures tens of thousands of route-maps
+			 * and route_map_update_fn does any significant
+			 * processing, this loop can take a huge amount of time
+			 * (many seconds). This can result in the daemon
+			 * getting killed due to missing watchdog pings. To
+			 * rectify this we schedule an individual task for each
+			 * route-map.
+			 */
+			thread_add_timer_msec(m, route_map_update_fn, rmap_name, 0, NULL);
 			nnode = node->next;
-			route_map_clear_updated(node);
 		} else
 			nnode = node->next;
 	}
