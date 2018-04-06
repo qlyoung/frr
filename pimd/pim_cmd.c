@@ -63,10 +63,18 @@
 #include "bfd.h"
 
 static struct cmd_node interface_node = {
-	INTERFACE_NODE, "%s(config-if)# ", 1 /* vtysh ? yes */
+	.parent = CONFIG_NODE,
+	.node = INTERFACE_NODE,
+	.prompt = "%s(config-if)# ",
+	.vtysh = 1,
 };
 
-static struct cmd_node debug_node = {DEBUG_NODE, "", 1};
+static struct cmd_node debug_node = {
+	.parent = CLI_CONFIG_PARENT,
+	.node = DEBUG_NODE,
+	.prompt = "",
+	.vtysh = 1,
+};
 
 static struct vrf *pim_cmd_lookup_vrf(struct vty *vty, struct cmd_token *argv[],
 				      const int argc, int *idx)

@@ -2705,7 +2705,12 @@ static int route_map_config_write(struct vty *vty)
 }
 
 /* Route map node structure. */
-static struct cmd_node rmap_node = {RMAP_NODE, "%s(config-route-map)# ", 1};
+static struct cmd_node rmap_node = {
+	.parent = CONFIG_NODE,
+	.node = RMAP_NODE,
+	.prompt = "%s(config-route-map)# ",
+	.vtysh = 1,
+};
 
 /* Common route map rules */
 

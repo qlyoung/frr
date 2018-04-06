@@ -49,7 +49,36 @@ DEFINE_MTYPE(LIB, HOST, "Host config")
 DEFINE_MTYPE(LIB, STRVEC, "String vector")
 DEFINE_MTYPE(LIB, COMPLETION, "Completion item")
 
+/* CLI Datastructures ---------------------------------------------------------
+ *
+ * FRR CLI is modal; each mode contains a set of commands for related
+ * functionality. The user moves through the different modes. These modes are
+ * modeled as a graph.
+ *
+ * For more information, see:
+ *    doc/developer/cli.rst
+ *
+ * root
+ *    The root node. This node cannot be entered from the CLI prompt by the
+ *    user. It serves as the parent for all other modes.
+ *
+ * mvec
+ *    A resizable array that contains all of the modes, indexed by their mode
+ *    IDs. Used for O(1) lookup and iteration.
+ *
+ * mgraph
+ *    A directed graph that contains the same modes.
+ */
+static struct {
+	struct cmd_node *root;
+	vector mvec;
+	struct graph *mgraph;
+} cli;
+
+/* clang-format off */
 const char *node_names[] = {
+	"INVALID",		    // INVALID_NODE,
+	"root node",		    // ROOT_NODE,
 	"auth",			    // AUTH_NODE,
 	"view",			    // VIEW_NODE,
 	"auth enable",		    // AUTH_ENABLE_NODE,
@@ -61,7 +90,7 @@ const char *node_names[] = {
 	"aaa",			    // AAA_NODE,
 	"keychain",		    // KEYCHAIN_NODE,
 	"keychain key",		    // KEYCHAIN_KEY_NODE,
-	"logical-router",	   // LOGICALROUTER_NODE,
+	"logical-router",	    // LOGICALROUTER_NODE,
 	"vrf",			    // VRF_NODE,
 	"interface",		    // INTERFACE_NODE,
 	"nexthop-group",            // NH_GROUP_NODE,
@@ -74,14 +103,14 @@ const char *node_names[] = {
 	"bgp",			    // BGP_NODE,
 	"bgp vpnv4",		    // BGP_VPNV4_NODE,
 	"bgp vpnv6",		    // BGP_VPNV6_NODE,
-	"bgp ipv4 unicast",	 // BGP_IPV4_NODE,
-	"bgp ipv4 multicast",       // BGP_IPV4M_NODE,
+	"bgp ipv4 unicast",	    // BGP_IPV4_NODE,
+	"bgp ipv4 multicast",	    // BGP_IPV4M_NODE,
 	"bgp ipv4 labeled unicast", // BGP_IPV4L_NODE,
 	"bgp ipv6",		    // BGP_IPV6_NODE,
-	"bgp ipv6 multicast",       // BGP_IPV6M_NODE,
+	"bgp ipv6 multicast",	    // BGP_IPV6M_NODE,
 	"bgp ipv6 labeled unicast", // BGP_IPV6L_NODE,
-	"bgp vrf policy",	   // BGP_VRF_POLICY_NODE,
-	"bgp vnc defaults",	 // BGP_VNC_DEFAULTS_NODE,
+	"bgp vrf policy",	    // BGP_VRF_POLICY_NODE,
+	"bgp vnc defaults",	    // BGP_VNC_DEFAULTS_NODE,
 	"bgp vnc nve",		    // BGP_VNC_NVE_GROUP_NODE,
 	"bgp vnc l2",		    // BGP_VNC_L2_GROUP_NODE,
 	"rfp defaults",		    // RFP_DEFAULTS_NODE,
@@ -91,19 +120,19 @@ const char *node_names[] = {
 	"ldp",			    // LDP_NODE,
 	"ldp ipv4",		    // LDP_IPV4_NODE,
 	"ldp ipv6",		    // LDP_IPV6_NODE,
-	"ldp ipv4 interface",       // LDP_IPV4_IFACE_NODE,
-	"ldp ipv6 interface",       // LDP_IPV6_IFACE_NODE,
+	"ldp ipv4 interface",	    // LDP_IPV4_IFACE_NODE,
+	"ldp ipv6 interface",	    // LDP_IPV6_IFACE_NODE,
 	"ldp l2vpn",		    // LDP_L2VPN_NODE,
-	"ldp",			    // LDP_PSEUDOWIRE_NODE,
+	"ldp pseudowire",	    // LDP_PSEUDOWIRE_NODE,
 	"isis",			    // ISIS_NODE,
 	"static ip",		    // IP_NODE,
-	"ipv4 access list",	 // ACCESS_NODE,
-	"ipv4 prefix list",	 // PREFIX_NODE,
-	"ipv6 access list",	 // ACCESS_IPV6_NODE,
-	"MAC access list",	  // ACCESS_MAC_NODE,
-	"ipv6 prefix list",	 // PREFIX_IPV6_NODE,
+	"ipv4 access list",	    // ACCESS_NODE,
+	"ipv4 prefix list",	    // PREFIX_NODE,
+	"ipv6 access list",	    // ACCESS_IPV6_NODE,
+	"MAC access list",	    // ACCESS_MAC_NODE,
+	"ipv6 prefix list",	    // PREFIX_IPV6_NODE,
 	"as list",		    // AS_LIST_NODE,
-	"community list",	   // COMMUNITY_LIST_NODE,
+	"community list",	    // COMMUNITY_LIST_NODE,
 	"routemap",		    // RMAP_NODE,
 	"pbr-map",		    // PBRMAP_NODE,
 	"smux",			    // SMUX_NODE,
@@ -116,15 +145,182 @@ const char *node_names[] = {
 	"link-params",		    // LINK_PARAMS_NODE,
 	"bgp evpn vni",		    // BGP_EVPN_VNI_NODE,
 	"rpki",			    // RPKI_NODE
-	"bgp ipv4 flowspec",	    /* BGP_FLOWSPECV4_NODE
-				     */
-	"bgp ipv6 flowspec",	    /* BGP_FLOWSPECV6_NODE
-				     */
+	"bgp ipv4 flowspec",	    /* BGP_FLOWSPECV4_NODE */
+	"bgp ipv6 flowspec",	    /* BGP_FLOWSPECV6_NODE */
+	"config parent node",	    /* CLI_CONFIG_PARENT */
+};
+/* clang-format on */
+
+/* Standard command node structures. */
+static struct cmd_node root_node = {
+	.parent = 0x00,
+	.node = ROOT_NODE,
+	.prompt = "",
 };
 
-/* Command vector which includes some level of command lists. Normally
-   each daemon maintains each own cmdvec. */
-vector cmdvec = NULL;
+static struct cmd_node cli_config_parent = {
+	.parent = ROOT_NODE,
+	.node = CLI_CONFIG_PARENT,
+	.prompt = "",
+};
+
+static struct cmd_node auth_node = {
+	.parent = ROOT_NODE, /* Root node */
+	.node = AUTH_NODE,
+	.prompt = "Password: ",
+};
+
+static struct cmd_node view_node = {
+	.parent = AUTH_NODE,
+	.node = VIEW_NODE,
+	.prompt = "%s> ",
+};
+
+static struct cmd_node auth_enable_node = {
+	.parent = VIEW_NODE,
+	.node = AUTH_ENABLE_NODE,
+	.prompt = "Password: ",
+};
+
+static struct cmd_node enable_node = {
+	.parent = VIEW_NODE,
+	.node = ENABLE_NODE,
+	.prompt = "%s# ",
+};
+
+static struct cmd_node config_node = {
+	.parent = ENABLE_NODE,
+	.node = CONFIG_NODE,
+	.prompt = "%s(config)# ",
+	.vtysh = 1,
+};
+
+static void node_add(struct cmd_node *node)
+{
+	struct graph_node *pn;
+	struct graph_node *cn;
+	struct cmd_node *parent;
+
+	/* insert in vector */
+	vector_set_index(cli.mvec, node->node, node);
+
+	/* find parent */
+	parent = vector_slot(cli.mvec, node->parent);
+
+	if (!parent) {
+		fprintf(stderr,
+			"%s: Tried to install node '%s' under node '%s', but could not find '%s' in the graph\n",
+			__PRETTY_FUNCTION__, node_names[node->node],
+			node_names[node->parent], node_names[node->parent]);
+		fprintf(stderr, "%s: Installing without parent.",
+			__PRETTY_FUNCTION__);
+		return;
+	}
+
+	/* insert in graph */
+	pn = graph_find_node(cli.mgraph, parent);
+	cn = graph_new_node(cli.mgraph, node, NULL);
+	graph_add_edge(pn, cn);
+}
+
+int node_change_vty(struct vty *vty, enum node_type to)
+{
+	struct graph_node *fn, *tn;
+	struct cmd_node *fcn, *tcn;
+
+	/* retrieve the from and to nodes */
+	for (unsigned int i = 0; i < vector_active(cli.mgraph->nodes); i++) {
+		struct graph_node *g = vector_slot(cli.mgraph->nodes, i);
+		struct cmd_node *c = g->data;
+
+		if ((int)c->node == vty->node)
+			fn = g;
+		else if (c->node == to)
+			tn = g;
+	}
+
+	/* verify that there is an edge here */
+	if (!graph_has_edge(fn, tn))
+		return -1;
+
+	/* call transition callbacks, if any */
+	fcn = fn->data;
+	tcn = tn->data;
+
+	if (fcn->leave_cb)
+		fcn->leave_cb(vty, tcn);
+	if (fcn->enter_cb)
+		tcn->enter_cb(vty, fcn);
+
+	vty->node = to;
+
+	return 0;
+}
+
+enum node_type node_parent(enum node_type node)
+{
+	assert(node > CONFIG_NODE);
+	struct cmd_node *n = vector_slot(cli.mvec, node);
+
+	return n->parent;
+}
+
+struct cmd_node *node_get(enum node_type node)
+{
+	return vector_slot(cli.mvec, node);
+}
+
+static unsigned int cmd_hash_key(void *p)
+{
+	int size = sizeof(p);
+
+	return jhash(p, size, 0);
+}
+
+static int cmd_hash_cmp(const void *a, const void *b)
+{
+	return a == b;
+}
+
+void install_node(struct cmd_node *node, int (*func)(struct vty *))
+{
+	vector_ensure(cli.mvec, node->node);
+
+	if (vector_slot(cli.mvec, node->node))
+		fprintf(stderr, "Duplicate install of node %d (%s)", node->node,
+			node_names[node->node]);
+
+	/* XXX: should be part of structure definition */
+	node->func = func;
+
+	/* initialize graph, hash and vector for commands */
+	node->cmdgraph = graph_new();
+	node->cmd_vector = vector_init(VECTOR_MIN_SIZE);
+	struct cmd_token *token =
+		cmd_token_new(START_TKN, CMD_ATTR_NORMAL, NULL, NULL);
+	graph_new_node(node->cmdgraph, token,
+		       (void (*)(void *)) & cmd_token_del);
+	node->cmd_hash = hash_create_size(16, cmd_hash_key, cmd_hash_cmp,
+					  "Command Hash");
+
+	/* install */
+	node_add(node);
+}
+
+static void nodes_init(void)
+{
+	cli.root = &root_node;
+	cli.mvec = vector_init(VECTOR_MIN_SIZE);
+	cli.mgraph = graph_new();
+	/* manually install root node */
+	vector_set_index(cli.mvec, root_node.node, &root_node);
+	graph_new_node(cli.mgraph, &root_node, NULL);
+	/* parent of all hidden nodes used for config purposes */
+	install_node(&cli_config_parent, NULL);
+}
+
+
+/* ------------------------------------------------------------------------- */
 
 /* Host information structure. */
 struct host host;
@@ -146,24 +342,6 @@ const char *cmd_domainname_get(void)
 	return host.domainname;
 }
 
-/* Standard command node structures. */
-static struct cmd_node auth_node = {
-	AUTH_NODE, "Password: ",
-};
-
-static struct cmd_node view_node = {
-	VIEW_NODE, "%s> ",
-};
-
-static struct cmd_node auth_enable_node = {
-	AUTH_ENABLE_NODE, "Password: ",
-};
-
-static struct cmd_node enable_node = {
-	ENABLE_NODE, "%s# ",
-};
-
-static struct cmd_node config_node = {CONFIG_NODE, "%s(config)# ", 1};
 
 /* Default motd string. */
 static const char *default_motd = FRR_DEFAULT_MOTD;
@@ -280,34 +458,6 @@ int argv_find(struct cmd_token **argv, int argc, const char *text, int *index)
 	return found;
 }
 
-static unsigned int cmd_hash_key(void *p)
-{
-	int size = sizeof(p);
-
-	return jhash(p, size, 0);
-}
-
-static int cmd_hash_cmp(const void *a, const void *b)
-{
-	return a == b;
-}
-
-/* Install top node of command vector. */
-void install_node(struct cmd_node *node, int (*func)(struct vty *))
-{
-	vector_set_index(cmdvec, node->node, node);
-	node->func = func;
-	node->cmdgraph = graph_new();
-	node->cmd_vector = vector_init(VECTOR_MIN_SIZE);
-	// add start node
-	struct cmd_token *token =
-		cmd_token_new(START_TKN, CMD_ATTR_NORMAL, NULL, NULL);
-	graph_new_node(node->cmdgraph, token,
-		       (void (*)(void *)) & cmd_token_del);
-	node->cmd_hash = hash_create_size(16, cmd_hash_key, cmd_hash_cmp,
-					  "Command Hash");
-}
-
 /**
  * Tokenizes a string, storing tokens in a vector.
  * Whitespace is ignored.
@@ -368,7 +518,7 @@ const char *cmd_prompt(enum node_type node)
 {
 	struct cmd_node *cnode;
 
-	cnode = vector_slot(cmdvec, node);
+	cnode = node_get(node);
 	return cnode->prompt;
 }
 
@@ -378,13 +528,13 @@ void install_element(enum node_type ntype, struct cmd_element *cmd)
 	struct cmd_node *cnode;
 
 	/* cmd_init hasn't been called */
-	if (!cmdvec) {
+	if (!cli.mvec) {
 		fprintf(stderr, "%s called before cmd_init, breakage likely\n",
 			__func__);
 		return;
 	}
 
-	cnode = vector_lookup(cmdvec, ntype);
+	cnode = node_get(ntype);
 
 	if (cnode == NULL) {
 		fprintf(stderr,
@@ -418,8 +568,16 @@ void install_element(enum node_type ntype, struct cmd_element *cmd)
 
 	vector_set(cnode->cmd_vector, cmd);
 
-	if (ntype == VIEW_NODE)
-		install_element(ENABLE_NODE, cmd);
+	/* If the node is VIEW_NODE, then ENABLE_NODE ought to get the command
+	 * also, as ENABLE_NODE should be a strict superset of VIEW_NODE. To
+	 * avoid duplication warnings, check that the command hasn't already
+	 * been installed there first.
+	 */
+	if (ntype == VIEW_NODE) {
+		cnode = node_get(ENABLE_NODE);
+		if (hash_lookup(cnode->cmd_hash, cmd) == NULL)
+			install_element(ENABLE_NODE, cmd);
+	}
 }
 
 void uninstall_element(enum node_type ntype, struct cmd_element *cmd)
@@ -427,13 +585,13 @@ void uninstall_element(enum node_type ntype, struct cmd_element *cmd)
 	struct cmd_node *cnode;
 
 	/* cmd_init hasn't been called */
-	if (!cmdvec) {
+	if (!cli.mvec) {
 		fprintf(stderr, "%s called before cmd_init, breakage likely\n",
 			__func__);
 		return;
 	}
 
-	cnode = vector_lookup(cmdvec, ntype);
+	cnode = node_get(ntype);
 
 	if (cnode == NULL) {
 		fprintf(stderr,
@@ -593,13 +751,6 @@ static int config_write_host(struct vty *vty)
 	return 1;
 }
 
-/* Utility function for getting command graph. */
-static struct graph *cmd_node_graph(vector v, enum node_type ntype)
-{
-	struct cmd_node *cnode = vector_slot(v, ntype);
-	return cnode->cmdgraph;
-}
-
 static int cmd_try_do_shortcut(enum node_type node, char *first_word)
 {
 	if (first_word != NULL && node != AUTH_NODE && node != VIEW_NODE
@@ -681,7 +832,7 @@ static vector cmd_complete_command_real(vector vline, struct vty *vty,
 					int *status)
 {
 	struct list *completions;
-	struct graph *cmdgraph = cmd_node_graph(cmdvec, vty->node);
+	struct graph *cmdgraph = node_get(vty->node)->cmdgraph;
 
 	enum matcher_rv rv = command_complete(cmdgraph, vline, &completions);
 
@@ -939,62 +1090,6 @@ char **cmd_complete_command(vector vline, struct vty *vty, int *status)
 	return ret;
 }
 
-/* return parent node */
-/* MUST eventually converge on CONFIG_NODE */
-enum node_type node_parent(enum node_type node)
-{
-	enum node_type ret;
-
-	assert(node > CONFIG_NODE);
-
-	switch (node) {
-	case BGP_VPNV4_NODE:
-	case BGP_VPNV6_NODE:
-	case BGP_FLOWSPECV4_NODE:
-	case BGP_FLOWSPECV6_NODE:
-	case BGP_VRF_POLICY_NODE:
-	case BGP_VNC_DEFAULTS_NODE:
-	case BGP_VNC_NVE_GROUP_NODE:
-	case BGP_VNC_L2_GROUP_NODE:
-	case BGP_IPV4_NODE:
-	case BGP_IPV4M_NODE:
-	case BGP_IPV4L_NODE:
-	case BGP_IPV6_NODE:
-	case BGP_IPV6M_NODE:
-	case BGP_EVPN_NODE:
-	case BGP_IPV6L_NODE:
-		ret = BGP_NODE;
-		break;
-	case BGP_EVPN_VNI_NODE:
-		ret = BGP_EVPN_NODE;
-		break;
-	case KEYCHAIN_KEY_NODE:
-		ret = KEYCHAIN_NODE;
-		break;
-	case LINK_PARAMS_NODE:
-		ret = INTERFACE_NODE;
-		break;
-	case LDP_IPV4_NODE:
-	case LDP_IPV6_NODE:
-		ret = LDP_NODE;
-		break;
-	case LDP_IPV4_IFACE_NODE:
-		ret = LDP_IPV4_NODE;
-		break;
-	case LDP_IPV6_IFACE_NODE:
-		ret = LDP_IPV6_NODE;
-		break;
-	case LDP_PSEUDOWIRE_NODE:
-		ret = LDP_L2VPN_NODE;
-		break;
-	default:
-		ret = CONFIG_NODE;
-		break;
-	}
-
-	return ret;
-}
-
 /* Execute command by argument vline vector. */
 static int cmd_execute_command_real(vector vline, enum filter_type filter,
 				    struct vty *vty,
@@ -1004,7 +1099,7 @@ static int cmd_execute_command_real(vector vline, enum filter_type filter,
 	enum matcher_rv status;
 	const struct cmd_element *matched_element = NULL;
 
-	struct graph *cmdgraph = cmd_node_graph(cmdvec, vty->node);
+	struct graph *cmdgraph = node_get(vty->node)->cmdgraph;
 	status = command_match(cmdgraph, vline, &argv_list, &matched_element);
 
 	if (cmd)
@@ -1529,7 +1624,7 @@ static void permute(struct graph_node *start, struct vty *vty)
 
 int cmd_list_cmds(struct vty *vty, int do_permute)
 {
-	struct cmd_node *node = vector_slot(cmdvec, vty->node);
+	struct cmd_node *node = node_get(vty->node);
 
 	if (do_permute)
 		permute(vector_slot(node->cmdgraph->nodes, 0), vty);
@@ -1566,6 +1661,37 @@ DEFUN (show_commandtree,
 	return cmd_list_cmds(vty, argc == 3);
 }
 
+static void graph_dump_mode_print_cb(struct graph_node *gn, struct buffer *buf)
+{
+	char nbuf[64];
+	struct cmd_node *cn1, *cn2;
+	cn1 = gn->data;
+
+	for (unsigned int i = 0; i < vector_active(gn->to); i++) {
+		struct graph_node *adj = vector_slot(gn->to, i);
+
+		cn2 = adj->data;
+		snprintf(nbuf, sizeof(nbuf), "    \"%s\" -> \"%s\";\n",
+			 node_names[cn1->node], node_names[cn2->node]);
+		buffer_putstr(buf, nbuf);
+	}
+}
+
+DEFUN (dump_nodes,
+       dump_nodes_cmd,
+       "show modetree",
+       SHOW_STR
+       "Show mode tree\n")
+{
+	struct graph_node *gn =
+		graph_find_node(cli.mgraph, node_get(ROOT_NODE));
+	char *dot = graph_dump_dot(cli.mgraph, gn, graph_dump_mode_print_cb);
+
+	vty_out(vty, "%s\n", dot);
+	XFREE(MTYPE_TMP, dot);
+	return CMD_SUCCESS;
+}
+
 static int vty_write_config(struct vty *vty)
 {
 	size_t i;
@@ -1583,8 +1709,8 @@ static int vty_write_config(struct vty *vty)
 	vty_out(vty, "frr defaults %s\n", DFLT_NAME);
 	vty_out(vty, "!\n");
 
-	for (i = 0; i < vector_active(cmdvec); i++)
-		if ((node = vector_slot(cmdvec, i)) && node->func
+	for (i = 0; i < vector_active(cli.mvec); i++)
+		if ((node = vector_slot(cli.mvec, i)) && node->func
 		    && (node->vtysh || vty->type != VTY_SHELL)) {
 			if ((*node->func)(vty))
 				vty_out(vty, "!\n");
@@ -2532,19 +2658,19 @@ DEFUN(find,
 {
 	char *text = argv_concat(argv, argc, 1);
 	const struct cmd_node *node;
-	const struct cmd_element *cli;
+	const struct cmd_element *ce;
 	vector clis;
 
-	for (unsigned int i = 0; i < vector_active(cmdvec); i++) {
-		node = vector_slot(cmdvec, i);
-		if (!node)
+	for (unsigned int i = 0; i < vector_active(cli.mvec); i++) {
+		node = vector_slot(cli.mvec, i);
+		if (!node || !node->cmd_vector)
 			continue;
 		clis = node->cmd_vector;
 		for (unsigned int j = 0; j < vector_active(clis); j++) {
-			cli = vector_slot(clis, j);
-			if (strcasestr(cli->string, text))
+			ce = vector_slot(clis, j);
+			if (strcasestr(ce->string, text))
 				vty_out(vty, "  (%s)  %s\n",
-					node_names[node->node], cli->string);
+					node_names[node->node], ce->string);
 		}
 	}
 
@@ -2598,8 +2724,7 @@ void cmd_init(int terminal)
 
 	varhandlers = list_new();
 
-	/* Allocate initial top vector of commands. */
-	cmdvec = vector_init(VECTOR_MIN_SIZE);
+	nodes_init();
 
 	/* Default host value settings. */
 	host.name = XSTRDUP(MTYPE_HOST, names.nodename);
@@ -2621,16 +2746,21 @@ void cmd_init(int terminal)
 	host.motdfile = NULL;
 
 	/* Install top nodes. */
-	install_node(&view_node, NULL);
-	install_node(&enable_node, NULL);
 	install_node(&auth_node, NULL);
+	install_node(&view_node, NULL);
 	install_node(&auth_enable_node, NULL);
+	install_node(&enable_node, NULL);
 	install_node(&config_node, config_write_host);
 
 	/* Each node's basic commands. */
 	install_element(VIEW_NODE, &show_version_cmd);
 	install_element(ENABLE_NODE, &show_startup_config_cmd);
 	install_element(ENABLE_NODE, &debug_memstats_cmd);
+	install_element(VIEW_NODE, &find_cmd);
+        install_element(VIEW_NODE, &dump_nodes_cmd);
+
+	/* We cannot do this because it conflicts with overrides in VTYSH. */
+	/* install_default(ENABLE_NODE); */
 
 	if (terminal) {
 		install_element(VIEW_NODE, &config_list_cmd);
@@ -2644,7 +2774,6 @@ void cmd_init(int terminal)
 		install_element(VIEW_NODE, &show_commandtree_cmd);
 		install_element(VIEW_NODE, &echo_cmd);
 		install_element(VIEW_NODE, &autocomplete_cmd);
-		install_element(VIEW_NODE, &find_cmd);
 
 		install_element(ENABLE_NODE, &config_end_cmd);
 		install_element(ENABLE_NODE, &config_disable_cmd);
@@ -2712,21 +2841,30 @@ void cmd_terminate()
 {
 	struct cmd_node *cmd_node;
 
-	if (cmdvec) {
-		for (unsigned int i = 0; i < vector_active(cmdvec); i++)
-			if ((cmd_node = vector_slot(cmdvec, i)) != NULL) {
-				// deleting the graph delets the cmd_element as
-				// well
-				graph_delete_graph(cmd_node->cmdgraph);
-				vector_free(cmd_node->cmd_vector);
-				hash_clean(cmd_node->cmd_hash, NULL);
-				hash_free(cmd_node->cmd_hash);
-				cmd_node->cmd_hash = NULL;
+	if (cli.mvec) {
+		for (unsigned int i = 0; i < vector_active(cli.mvec); i++)
+			if ((cmd_node = vector_slot(cli.mvec, i)) != NULL) {
+				/*
+				 * deleting the graph deletes the cmd_elements
+				 * contained within it
+				 */
+				if (cmd_node->cmdgraph)
+					graph_delete_graph(cmd_node->cmdgraph);
+				if (cmd_node->cmd_vector)
+					vector_free(cmd_node->cmd_vector);
+				if (cmd_node->cmd_hash) {
+					hash_clean(cmd_node->cmd_hash, NULL);
+					hash_free(cmd_node->cmd_hash);
+					cmd_node->cmd_hash = NULL;
+				}
 			}
 
-		vector_free(cmdvec);
-		cmdvec = NULL;
+		vector_free(cli.mvec);
+		cli.mvec = NULL;
 	}
+
+	if (cli.mgraph)
+		graph_delete_graph(cli.mgraph);
 
 	if (host.name)
 		XFREE(MTYPE_HOST, host.name);

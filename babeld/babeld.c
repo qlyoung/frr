@@ -64,11 +64,11 @@ static time_t expiry_time;
 static time_t source_expiry_time;
 
 /* Babel node structure. */
-static struct cmd_node cmd_babel_node =
-{
-    .node   = BABEL_NODE,
-    .prompt = "%s(config-router)# ",
-    .vtysh  = 1,
+static struct cmd_node cmd_babel_node = {
+	.parent = CONFIG_NODE,
+	.node = BABEL_NODE,
+	.prompt = "%s(config-router)# ",
+	.vtysh = 1,
 };
 
 /* print current babel configuration on vty */

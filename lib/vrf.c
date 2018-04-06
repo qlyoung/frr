@@ -700,7 +700,12 @@ DEFUN_NOSH (no_vrf,
 }
 
 
-struct cmd_node vrf_node = {VRF_NODE, "%s(config-vrf)# ", 1};
+struct cmd_node vrf_node = {
+	.parent = CONFIG_NODE,
+	.node = VRF_NODE,
+	.prompt = "%s(config-vrf)# ",
+	.vtysh = 1,
+};
 
 DEFUN_NOSH (vrf_netns,
 	    vrf_netns_cmd,
@@ -796,7 +801,12 @@ static int vrf_write_host(struct vty *vty)
 	return 1;
 }
 
-static struct cmd_node vrf_debug_node = {VRF_DEBUG_NODE, "", 1};
+static struct cmd_node vrf_debug_node = {
+	.parent = CLI_CONFIG_PARENT,
+	.node = VRF_DEBUG_NODE,
+	.prompt = "",
+	.vtysh = 1,
+};
 
 void vrf_install_commands(void)
 {

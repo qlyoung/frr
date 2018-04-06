@@ -1466,7 +1466,12 @@ DEFUN (clear_ip_eigrp_neighbors_IP_soft,
 	return CMD_SUCCESS;
 }
 
-static struct cmd_node eigrp_node = {EIGRP_NODE, "%s(config-router)# ", 1};
+static struct cmd_node eigrp_node = {
+	.parent = CONFIG_NODE,
+	.node = EIGRP_NODE,
+	.prompt = "%s(config-router)# ",
+	.vtysh = 1,
+};
 
 /* Save EIGRP configuration */
 static int eigrp_config_write(struct vty *vty)
@@ -1514,8 +1519,12 @@ void eigrp_vty_show_init(void)
 }
 
 /* eigrpd's interface node. */
-static struct cmd_node eigrp_interface_node = {INTERFACE_NODE,
-					       "%s(config-if)# ", 1};
+static struct cmd_node eigrp_interface_node = {
+	.parent = CONFIG_NODE,
+	.node = INTERFACE_NODE,
+	.prompt = "%s(config-if)# ",
+	.vtysh = 1,
+};
 
 void eigrp_vty_if_init(void)
 {

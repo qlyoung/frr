@@ -153,7 +153,12 @@ DEFUN_NOSH(show_debugging_pbr,
 /* clang-format on */
 /* ------------------------------------------------------------------------- */
 
-static struct cmd_node debug_node = {DEBUG_NODE, "", 1};
+static struct cmd_node debug_node = {
+	.parent = CLI_CONFIG_PARENT,
+	.node = DEBUG_NODE,
+	.prompt = "",
+	.vtysh = 1,
+};
 
 struct debug_callbacks pbr_dbg_cbs = {.debug_set_all = pbr_debug_set_all};
 

@@ -35,7 +35,12 @@
 DEFINE_MTYPE_STATIC(LIB, LOGICALROUTER_NAME, "Logical Router Name")
 
 /* Logical Router node has no interface. */
-static struct cmd_node logicalrouter_node = {LOGICALROUTER_NODE, "", 1};
+static struct cmd_node logicalrouter_node = {
+	.parent = CLI_CONFIG_PARENT,
+	.node = LOGICALROUTER_NODE,
+	.prompt = "",
+	.vtysh = 1,
+};
 
 static int logicalrouter_backend;
 

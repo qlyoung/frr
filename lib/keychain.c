@@ -961,11 +961,19 @@ DEFUN (no_send_lifetime,
 	return CMD_SUCCESS;
 }
 
-static struct cmd_node keychain_node = {KEYCHAIN_NODE, "%s(config-keychain)# ",
-					1};
+static struct cmd_node keychain_node = {
+	.parent = CONFIG_NODE,
+	.node = KEYCHAIN_NODE,
+	.prompt = "%s(config-keychain)# ",
+	.vtysh = 1,
+};
 
-static struct cmd_node keychain_key_node = {KEYCHAIN_KEY_NODE,
-					    "%s(config-keychain-key)# ", 1};
+static struct cmd_node keychain_key_node = {
+	.parent = KEYCHAIN_NODE,
+	.node = KEYCHAIN_KEY_NODE,
+	.prompt = "%s(config-keychain-key)# ",
+	.vtysh = 1,
+};
 
 static int keychain_strftime(char *buf, int bufsiz, time_t *time)
 {

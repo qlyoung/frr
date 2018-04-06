@@ -1969,7 +1969,12 @@ static int bgp_config_write_debug(struct vty *vty)
 	return write;
 }
 
-static struct cmd_node debug_node = {DEBUG_NODE, "", 1};
+static struct cmd_node debug_node = {
+	.parent = CLI_CONFIG_PARENT,
+	.node = DEBUG_NODE,
+	.prompt = "",
+	.vtysh = 1,
+};
 
 void bgp_debug_init(void)
 {

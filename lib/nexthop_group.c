@@ -310,9 +310,10 @@ DEFPY(ecmp_nexthops, ecmp_nexthops_cmd,
 }
 
 struct cmd_node nexthop_group_node = {
-	NH_GROUP_NODE,
-	"%s(config-nh-group)# ",
-	1
+	.parent = CONFIG_NODE,
+	.node = NH_GROUP_NODE,
+	.prompt = "%s(config-nh-group)# ",
+	.vtysh = 1,
 };
 
 void nexthop_group_write_nexthop(struct vty *vty, struct nexthop *nh)

@@ -1898,7 +1898,10 @@ static int config_write_ospf6_interface(struct vty *vty)
 }
 
 static struct cmd_node interface_node = {
-	INTERFACE_NODE, "%s(config-if)# ", 1 /* VTYSH */
+	.parent = CONFIG_NODE,
+	.node = INTERFACE_NODE,
+	.prompt = "%s(config-if)# ",
+	.vtysh = 1,
 };
 
 void ospf6_interface_init(void)

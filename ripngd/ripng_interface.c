@@ -1112,7 +1112,10 @@ static int interface_config_write(struct vty *vty)
 
 /* ripngd's interface node. */
 static struct cmd_node interface_node = {
-	INTERFACE_NODE, "%s(config-if)# ", 1 /* VTYSH */
+	.parent = CONFIG_NODE,
+	.node = INTERFACE_NODE,
+	.prompt = "%s(config-if)# ",
+	.vtysh = 1,
 };
 
 /* Initialization of interface. */

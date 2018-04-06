@@ -451,7 +451,12 @@ DEFUN (no_mpls_label_global_block,
 }
 
 /* MPLS node for MPLS LSP. */
-static struct cmd_node mpls_node = {MPLS_NODE, "", 1};
+static struct cmd_node mpls_node = {
+	.parent = CLI_CONFIG_PARENT,
+	.node = MPLS_NODE,
+	.prompt = "",
+	.vtysh = 1,
+};
 
 /* MPLS VTY.  */
 void zebra_mpls_vty_init(void)

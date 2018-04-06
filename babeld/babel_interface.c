@@ -53,13 +53,13 @@ static int interface_config_write (struct vty *vty);
 static babel_interface_nfo * babel_interface_allocate (void);
 static void babel_interface_free (babel_interface_nfo *bi);
 
-
-static vector babel_enable_if;                 /* enable interfaces (by cmd). */
-static struct cmd_node babel_interface_node =  /* babeld's interface node.    */
-{
-    INTERFACE_NODE,
-    "%s(config-if)# ",
-    1 /* VTYSH */
+/* enable interfaces (by cmd). */
+static vector babel_enable_if;
+static struct cmd_node babel_interface_node = {
+	.parent = CONFIG_NODE,
+	.node = INTERFACE_NODE,
+	.prompt = "%s(config-if)# ",
+	.vtysh = 1,
 };
 
 

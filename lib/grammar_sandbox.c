@@ -362,8 +362,6 @@ static struct list *cmd_graph_permutations(struct graph *graph)
 	return rv;
 }
 
-extern vector cmdvec;
-
 DEFUN (grammar_findambig,
        grammar_findambig_cmd,
        "grammar find-ambiguous [{printall|nodescan}]",
@@ -395,8 +393,7 @@ DEFUN (grammar_findambig,
 
 	do {
 		if (scan) {
-			struct cmd_node *cnode =
-				vector_slot(cmdvec, scannode++);
+			struct cmd_node *cnode = node_get(scannode++);
 			if (!cnode)
 				continue;
 			nodegraph = cnode->cmdgraph;
@@ -463,7 +460,8 @@ DEFUN (grammar_access,
 
 	struct cmd_node *cnode;
 
-	cnode = vector_slot(cmdvec, atoi(argv[2]->arg));
+	cnode = node_get(strtoul(argv[2]->arg, NULL, 10));
+
 	if (!cnode) {
 		vty_out(vty, "%% no such node\n");
 		return CMD_WARNING_CONFIG_FAILED;

@@ -1858,7 +1858,10 @@ int config_write_rip_network(struct vty *vty, int config_mode)
 }
 
 static struct cmd_node interface_node = {
-	INTERFACE_NODE, "%s(config-if)# ", 1,
+	.parent = CONFIG_NODE,
+	.node = INTERFACE_NODE,
+	.prompt = "%s(config-if)# ",
+	.vtysh = 1,
 };
 
 /* Called when interface structure allocated. */

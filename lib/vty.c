@@ -2897,7 +2897,10 @@ static int vty_config_write(struct vty *vty)
 }
 
 struct cmd_node vty_node = {
-	VTY_NODE, "%s(config-line)# ", 1,
+	.parent = CONFIG_NODE,
+	.node = VTY_NODE,
+	.prompt = "%s(config-line)# ",
+	.vtysh = 1,
 };
 
 /* Reset all VTY status. */

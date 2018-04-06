@@ -2026,8 +2026,11 @@ static int config_write_access(struct vty *vty, afi_t afi)
 }
 
 static struct cmd_node access_mac_node = {
-	ACCESS_MAC_NODE, "", /* Access list has no interface. */
-	1};
+	.parent = CLI_CONFIG_PARENT,
+	.node = ACCESS_MAC_NODE,
+	.prompt = "",
+	.vtysh = 1,
+};
 
 static int config_write_access_mac(struct vty *vty)
 {
@@ -2076,9 +2079,12 @@ static void access_list_init_mac(void)
 }
 
 /* Access-list node. */
-static struct cmd_node access_node = {ACCESS_NODE,
-				      "", /* Access list has no interface. */
-				      1};
+static struct cmd_node access_node = {
+	.parent = CLI_CONFIG_PARENT,
+	.node = ACCESS_NODE,
+	.prompt = "",
+	.vtysh = 1,
+};
 
 static int config_write_access_ipv4(struct vty *vty)
 {
@@ -2161,7 +2167,12 @@ static void access_list_init_ipv4(void)
 	install_element(CONFIG_NODE, &no_access_list_remark_comment_cmd);
 }
 
-static struct cmd_node access_ipv6_node = {ACCESS_IPV6_NODE, "", 1};
+static struct cmd_node access_ipv6_node = {
+	.parent = CLI_CONFIG_PARENT,
+	.node = ACCESS_IPV6_NODE,
+	.prompt = "",
+	.vtysh = 1,
+};
 
 static int config_write_access_ipv6(struct vty *vty)
 {

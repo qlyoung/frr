@@ -136,7 +136,12 @@ static unsigned int retry_interval;
 static unsigned int timeout;
 static unsigned int initial_synchronisation_timeout;
 
-static struct cmd_node rpki_node = {RPKI_NODE, "%s(config-rpki)# ", 1};
+static struct cmd_node rpki_node = {
+	.parent = CONFIG_NODE,
+	.node = RPKI_NODE,
+	.prompt = "%s(config-rpki)# ",
+	.vtysh = 1,
+};
 static struct route_map_rule_cmd route_match_rpki_cmd = {
 	"rpki", route_match, route_match_compile, route_match_free};
 

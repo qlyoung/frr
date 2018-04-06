@@ -1562,7 +1562,12 @@ static int fpm_remote_srv_write(struct vty *vty)
 
 
 /* Zebra node  */
-static struct cmd_node zebra_node = {ZEBRA_NODE, "", 1};
+static struct cmd_node zebra_node = {
+	.parent = CLI_CONFIG_PARENT,
+	.node = ZEBRA_NODE,
+	"",
+	.vtysh = 1,
+};
 
 
 /**

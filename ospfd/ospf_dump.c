@@ -1666,7 +1666,10 @@ DEFUN_NOSH (show_debugging_ospf_instance,
 
 /* Debug node. */
 static struct cmd_node debug_node = {
-	DEBUG_NODE, "", 1 /* VTYSH */
+	.parent = CLI_CONFIG_PARENT,
+	.node = DEBUG_NODE,
+	.prompt = "",
+	.vtysh = 1,
 };
 
 static int config_write_debug(struct vty *vty)

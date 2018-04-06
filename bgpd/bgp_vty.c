@@ -11830,50 +11830,95 @@ void bgp_vpn_policy_config_write_afi(struct vty *vty, struct bgp *bgp,
 
 /* BGP node structure. */
 static struct cmd_node bgp_node = {
-	BGP_NODE, "%s(config-router)# ", 1,
+	.parent = CONFIG_NODE,
+	.node = BGP_NODE,
+	.prompt = "%s(config-router)# ",
+	.vtysh = 1,
 };
 
 static struct cmd_node bgp_ipv4_unicast_node = {
-	BGP_IPV4_NODE, "%s(config-router-af)# ", 1,
+	.parent = BGP_NODE,
+	.node = BGP_IPV4_NODE,
+	.prompt = "%s(config-router-af)# ",
+	.vtysh = 1,
 };
 
 static struct cmd_node bgp_ipv4_multicast_node = {
-	BGP_IPV4M_NODE, "%s(config-router-af)# ", 1,
+	.parent = BGP_NODE,
+	.node = BGP_IPV4M_NODE,
+	.prompt = "%s(config-router-af)# ",
+	.vtysh = 1,
 };
 
 static struct cmd_node bgp_ipv4_labeled_unicast_node = {
-	BGP_IPV4L_NODE, "%s(config-router-af)# ", 1,
+	.parent = BGP_NODE,
+	.node = BGP_IPV4L_NODE,
+	.prompt = "%s(config-router-af)# ",
+	.vtysh = 1,
 };
 
 static struct cmd_node bgp_ipv6_unicast_node = {
-	BGP_IPV6_NODE, "%s(config-router-af)# ", 1,
+	.parent = BGP_NODE,
+	.node = BGP_IPV6_NODE,
+	.prompt = "%s(config-router-af)# ",
+	.vtysh = 1,
 };
 
 static struct cmd_node bgp_ipv6_multicast_node = {
-	BGP_IPV6M_NODE, "%s(config-router-af)# ", 1,
+	.parent = BGP_NODE,
+	.node = BGP_IPV6M_NODE,
+	.prompt = "%s(config-router-af)# ",
+	.vtysh = 1,
 };
 
 static struct cmd_node bgp_ipv6_labeled_unicast_node = {
-	BGP_IPV6L_NODE, "%s(config-router-af)# ", 1,
+	.parent = BGP_NODE,
+	.node = BGP_IPV6L_NODE,
+	.prompt = "%s(config-router-af)# ",
+	.vtysh = 1,
 };
 
-static struct cmd_node bgp_vpnv4_node = {BGP_VPNV4_NODE,
-					 "%s(config-router-af)# ", 1};
+static struct cmd_node bgp_vpnv4_node = {
+	.parent = BGP_NODE,
+	.node = BGP_VPNV4_NODE,
+	.prompt = "%s(config-router-af)# ",
+	.vtysh = 1,
+};
 
-static struct cmd_node bgp_vpnv6_node = {BGP_VPNV6_NODE,
-					 "%s(config-router-af-vpnv6)# ", 1};
+static struct cmd_node bgp_vpnv6_node = {
+	.parent = BGP_NODE,
+	.node = BGP_VPNV6_NODE,
+	.prompt = "%s(config-router-af-vpnv6)# ",
+	.vtysh = 1,
+};
 
-static struct cmd_node bgp_evpn_node = {BGP_EVPN_NODE,
-					"%s(config-router-evpn)# ", 1};
+static struct cmd_node bgp_evpn_node = {
+	.parent = BGP_NODE,
+	.node = BGP_EVPN_NODE,
+	.prompt = "%s(config-router-evpn)# ",
+	.vtysh = 1,
+};
 
-static struct cmd_node bgp_evpn_vni_node = {BGP_EVPN_VNI_NODE,
-					    "%s(config-router-af-vni)# ", 1};
+static struct cmd_node bgp_evpn_vni_node = {
+	.parent = BGP_EVPN_NODE,
+	.node = BGP_EVPN_VNI_NODE,
+	.prompt = "%s(config-router-af-vni)# ",
+	.vtysh = 1,
+};
 
-static struct cmd_node bgp_flowspecv4_node = {BGP_FLOWSPECV4_NODE,
-					 "%s(config-router-af)# ", 1};
+static struct cmd_node bgp_flowspecv4_node = {
+	.parent = BGP_NODE,
+	.node = BGP_FLOWSPECV4_NODE,
+	.prompt = "%s(config-router-af)# ",
+	.vtysh = 1,
+};
 
-static struct cmd_node bgp_flowspecv6_node = {BGP_FLOWSPECV6_NODE,
-					 "%s(config-router-af-vpnv6)# ", 1};
+static struct cmd_node bgp_flowspecv6_node = {
+	.parent = BGP_NODE,
+	.node = BGP_FLOWSPECV6_NODE,
+	.prompt = "%s(config-router-af-vpnv6)# ",
+	.vtysh = 1,
+};
 
 static void community_list_vty(void);
 
@@ -14073,7 +14118,10 @@ static int community_list_config_write(struct vty *vty)
 }
 
 static struct cmd_node community_list_node = {
-	COMMUNITY_LIST_NODE, "", 1 /* Export to vtysh.  */
+	.parent = CLI_CONFIG_PARENT,
+	.node = COMMUNITY_LIST_NODE,
+	.prompt = "",
+	.vtysh = 1,
 };
 
 static void community_list_vty(void)

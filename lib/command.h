@@ -73,84 +73,90 @@ struct host {
 
 /* List of CLI nodes. Please remember to update the name array in command.c. */
 enum node_type {
-	AUTH_NODE,		 /* Authentication mode of vty interface. */
-	VIEW_NODE,		 /* View node. Default mode of vty interface. */
-	AUTH_ENABLE_NODE,	/* Authentication mode for change enable. */
-	ENABLE_NODE,		 /* Enable node. */
-	CONFIG_NODE,		 /* Config node. Default mode of config file. */
-	DEBUG_NODE,		 /* Debug node. */
-	VRF_DEBUG_NODE,		 /* Vrf Debug node. */
-	DEBUG_VNC_NODE,		 /* Debug VNC node. */
-	AAA_NODE,		 /* AAA node. */
-	KEYCHAIN_NODE,		 /* Key-chain node. */
-	KEYCHAIN_KEY_NODE,       /* Key-chain key node. */
-	LOGICALROUTER_NODE,      /* Logical-Router node. */
-	VRF_NODE,		 /* VRF mode node. */
-	INTERFACE_NODE,		 /* Interface mode node. */
-	NH_GROUP_NODE,		 /* Nexthop-Group mode node. */
-	ZEBRA_NODE,		 /* zebra connection node. */
-	TABLE_NODE,		 /* rtm_table selection node. */
-	RIP_NODE,		 /* RIP protocol mode node. */
-	RIPNG_NODE,		 /* RIPng protocol mode node. */
-	BABEL_NODE,		 /* BABEL protocol mode node. */
-	EIGRP_NODE,		 /* EIGRP protocol mode node. */
-	BGP_NODE,		 /* BGP protocol mode which includes BGP4+ */
-	BGP_VPNV4_NODE,		 /* BGP MPLS-VPN PE exchange. */
-	BGP_VPNV6_NODE,		 /* BGP MPLS-VPN PE exchange. */
-	BGP_IPV4_NODE,		 /* BGP IPv4 unicast address family.  */
-	BGP_IPV4M_NODE,		 /* BGP IPv4 multicast address family.  */
-	BGP_IPV4L_NODE,		 /* BGP IPv4 labeled unicast address family.  */
-	BGP_IPV6_NODE,		 /* BGP IPv6 address family */
-	BGP_IPV6M_NODE,		 /* BGP IPv6 multicast address family. */
-	BGP_IPV6L_NODE,		 /* BGP IPv6 labeled unicast address family. */
-	BGP_VRF_POLICY_NODE,     /* BGP VRF policy */
-	BGP_VNC_DEFAULTS_NODE,   /* BGP VNC nve defaults */
-	BGP_VNC_NVE_GROUP_NODE,  /* BGP VNC nve group */
-	BGP_VNC_L2_GROUP_NODE,   /* BGP VNC L2 group */
-	RFP_DEFAULTS_NODE,       /* RFP defaults node */
-	BGP_EVPN_NODE,		 /* BGP EVPN node. */
-	OSPF_NODE,		 /* OSPF protocol mode */
-	OSPF6_NODE,		 /* OSPF protocol for IPv6 mode */
-	LDP_NODE,		 /* LDP protocol mode */
-	LDP_IPV4_NODE,		 /* LDP IPv4 address family */
-	LDP_IPV6_NODE,		 /* LDP IPv6 address family */
-	LDP_IPV4_IFACE_NODE,     /* LDP IPv4 Interface */
-	LDP_IPV6_IFACE_NODE,     /* LDP IPv6 Interface */
-	LDP_L2VPN_NODE,		 /* LDP L2VPN node */
-	LDP_PSEUDOWIRE_NODE,     /* LDP Pseudowire node */
-	ISIS_NODE,		 /* ISIS protocol mode */
-	IP_NODE,		 /* Static ip route node. */
-	ACCESS_NODE,		 /* Access list node. */
-	PREFIX_NODE,		 /* Prefix list node. */
-	ACCESS_IPV6_NODE,	/* Access list node. */
-	ACCESS_MAC_NODE,	 /* MAC access list node*/
-	PREFIX_IPV6_NODE,	/* Prefix list node. */
-	AS_LIST_NODE,		 /* AS list node. */
-	COMMUNITY_LIST_NODE,     /* Community list node. */
-	RMAP_NODE,		 /* Route map node. */
-	PBRMAP_NODE,		 /* PBR map node. */
-	SMUX_NODE,		 /* SNMP configuration node. */
-	DUMP_NODE,		 /* Packet dump node. */
-	FORWARDING_NODE,	 /* IP forwarding node. */
-	PROTOCOL_NODE,		 /* protocol filtering node */
-	MPLS_NODE,		 /* MPLS config node */
-	PW_NODE,		 /* Pseudowire config node */
-	VTY_NODE,		 /* Vty node. */
-	LINK_PARAMS_NODE,	/* Link-parameters node */
-	BGP_EVPN_VNI_NODE,       /* BGP EVPN VNI */
-	RPKI_NODE,     /* RPKI node for configuration of RPKI cache server
-			  connections.*/
-	BGP_FLOWSPECV4_NODE,	/* BGP IPv4 FLOWSPEC Address-Family */
-	BGP_FLOWSPECV6_NODE,	/* BGP IPv6 FLOWSPEC Address-Family */
-	NODE_TYPE_MAX, /* maximum */
+	INVALID_NODE = 0,       /* Sentinel node to check that parent is set */
+	ROOT_NODE,		/* Root node */
+	AUTH_NODE,		/* Authentication mode of vty interface. */
+	VIEW_NODE,		/* View node. Default mode of vty interface. */
+	AUTH_ENABLE_NODE,       /* Authentication mode for change enable. */
+	ENABLE_NODE,		/* Enable node. */
+	CONFIG_NODE,		/* Config node. Default mode of config file. */
+	DEBUG_NODE,		/* Debug node. */
+	VRF_DEBUG_NODE,		/* Vrf Debug node. */
+	DEBUG_VNC_NODE,		/* Debug VNC node. */
+	AAA_NODE,		/* AAA node. */
+	KEYCHAIN_NODE,		/* Key-chain node. */
+	KEYCHAIN_KEY_NODE,      /* Key-chain key node. */
+	LOGICALROUTER_NODE,     /* Logical-Router node. */
+	VRF_NODE,		/* VRF mode node. */
+	INTERFACE_NODE,		/* Interface mode node. */
+	NH_GROUP_NODE,		/* Nexthop-Group mode node. */
+	ZEBRA_NODE,		/* zebra connection node. */
+	TABLE_NODE,		/* rtm_table selection node. */
+	RIP_NODE,		/* RIP protocol mode node. */
+	RIPNG_NODE,		/* RIPng protocol mode node. */
+	BABEL_NODE,		/* BABEL protocol mode node. */
+	EIGRP_NODE,		/* EIGRP protocol mode node. */
+	BGP_NODE,		/* BGP protocol mode which includes BGP4+ */
+	BGP_VPNV4_NODE,		/* BGP MPLS-VPN PE exchange. */
+	BGP_VPNV6_NODE,		/* BGP MPLS-VPN PE exchange. */
+	BGP_IPV4_NODE,		/* BGP IPv4 unicast address family.  */
+	BGP_IPV4M_NODE,		/* BGP IPv4 multicast address family.  */
+	BGP_IPV4L_NODE,		/* BGP IPv4 labeled unicast address family.  */
+	BGP_IPV6_NODE,		/* BGP IPv6 address family */
+	BGP_IPV6M_NODE,		/* BGP IPv6 multicast address family. */
+	BGP_IPV6L_NODE,		/* BGP IPv6 labeled unicast address family. */
+	BGP_VRF_POLICY_NODE,    /* BGP VRF policy */
+	BGP_VNC_DEFAULTS_NODE,  /* BGP VNC nve defaults */
+	BGP_VNC_NVE_GROUP_NODE, /* BGP VNC nve group */
+	BGP_VNC_L2_GROUP_NODE,  /* BGP VNC L2 group */
+	RFP_DEFAULTS_NODE,      /* RFP defaults node */
+	BGP_EVPN_NODE,		/* BGP EVPN node. */
+	OSPF_NODE,		/* OSPF protocol mode */
+	OSPF6_NODE,		/* OSPF protocol for IPv6 mode */
+	LDP_NODE,		/* LDP protocol mode */
+	LDP_IPV4_NODE,		/* LDP IPv4 address family */
+	LDP_IPV6_NODE,		/* LDP IPv6 address family */
+	LDP_IPV4_IFACE_NODE,    /* LDP IPv4 Interface */
+	LDP_IPV6_IFACE_NODE,    /* LDP IPv6 Interface */
+	LDP_L2VPN_NODE,		/* LDP L2VPN node */
+	LDP_PSEUDOWIRE_NODE,    /* LDP Pseudowire node */
+	ISIS_NODE,		/* ISIS protocol mode */
+	IP_NODE,		/* Static ip route node. */
+	ACCESS_NODE,		/* Access list node. */
+	PREFIX_NODE,		/* Prefix list node. */
+	ACCESS_IPV6_NODE,       /* Access list node. */
+	ACCESS_MAC_NODE,	/* MAC access list node*/
+	PREFIX_IPV6_NODE,       /* Prefix list node. */
+	AS_LIST_NODE,		/* AS list node. */
+	COMMUNITY_LIST_NODE,    /* Community list node. */
+	RMAP_NODE,		/* Route map node. */
+	PBRMAP_NODE,		/* PBR map node. */
+	SMUX_NODE,		/* SNMP configuration node. */
+	DUMP_NODE,		/* Packet dump node. */
+	FORWARDING_NODE,	/* IP forwarding node. */
+	PROTOCOL_NODE,		/* protocol filtering node */
+	MPLS_NODE,		/* MPLS config node */
+	PW_NODE,		/* Pseudowire config node */
+	VTY_NODE,		/* Vty node. */
+	LINK_PARAMS_NODE,       /* Link-parameters node */
+	BGP_EVPN_VNI_NODE,      /* BGP EVPN VNI */
+	RPKI_NODE,		/* RPKI node for configuration of RPKI cache
+				 * server connections.
+				 */
+	BGP_FLOWSPECV4_NODE,    /* BGP IPv4 FLOWSPEC Address-Family */
+	BGP_FLOWSPECV6_NODE,    /* BGP IPv6 FLOWSPEC Address-Family */
+	CLI_CONFIG_PARENT,      /* Parent of nodes used only for config */
+	NODE_TYPE_MAX,		/* maximum */
 };
 
-extern vector cmdvec;
 extern const char *node_names[];
 
 /* Node which has some commands and prompt string and configuration
    function pointer . */
 struct cmd_node {
+	/* Node parent. */
+	enum node_type parent;
+
 	/* Node index. */
 	enum node_type node;
 
@@ -171,6 +177,9 @@ struct cmd_node {
 
 	/* Hashed index of command node list, for de-dupping primarily */
 	struct hash *cmd_hash;
+
+	void (*enter_cb)(struct vty *vty, struct cmd_node *from);
+	void (*leave_cb)(struct vty *vty, struct cmd_node *to);
 };
 
 /* Return value of the commands. */
@@ -381,18 +390,98 @@ struct cmd_node {
 #define NEIGHBOR_ADDR_STR2 "Neighbor address\nNeighbor IPv6 address\nInterface name or neighbor tag\n"
 #define NEIGHBOR_ADDR_STR3 "Neighbor address\nIPv6 address\nInterface name\n"
 
-/* Prototypes. */
-extern void install_node(struct cmd_node *, int (*)(struct vty *));
-extern void install_default(enum node_type);
-extern void install_element(enum node_type, struct cmd_element *);
 
-/* known issue with uninstall_element:  changes to cmd_token->attr (i.e.
- * deprecated/hidden) are not reversed. */
-extern void uninstall_element(enum node_type, struct cmd_element *);
+/* Mode related prototypes --------------------------------------------------*/
 
-/* Concatenates argv[shift] through argv[argc-1] into a single NUL-terminated
-   string with a space between each element (allocated using
-   XMALLOC(MTYPE_TMP)).  Returns NULL if shift >= argc. */
+extern void install_node(struct cmd_node *child, int (*)(struct vty *));
+
+/*
+ * Install default commands that should be present in every mode.
+ *
+ * node_type
+ *    Node ID of the mode to install into.
+ */
+extern void install_default(enum node_type node);
+
+/*
+ * Install a command into a mode.
+ *
+ * node
+ *    Node ID of the mode to install into.
+ *
+ * ce
+ *    Command element to install into the mode.
+ */
+extern void install_element(enum node_type node, struct cmd_element *ce);
+
+/*
+ * Uninstall a command from a mode.
+ *
+ * Known issues:
+ *    - changes to cmd_token->attr (i.e. deprecated/hidden) are not reversed.
+ *
+ * ce
+ *    Command element to install into the mode.
+ */
+extern void uninstall_element(enum node_type, struct cmd_element *ce);
+
+/*
+ * Use this instead of manually setting vty->node.
+ *
+ * Checks that the target node is reachable from the current node and executes
+ * transition callbacks.
+ *
+ * vty
+ *    The vty to operate on
+ *
+ * to
+ *    The node to change to
+ */
+extern int node_change_vty(struct vty *vty, enum node_type to);
+
+/*
+ * Return the parent node of a particular node.
+ *
+ * The root of all nodes must be CONFIG_NODE. The passed node must be a
+ * descendant of CONFIG_NODE.
+ *
+ * node
+ *    Node to get parent of
+ */
+extern enum node_type node_parent(enum node_type);
+
+/*
+ * Get node by ID.
+ *
+ * node
+ *    ID of cmd_node to fetch.
+ *
+ * Returns:
+ *    Fetched cmd_node.
+ */
+extern struct cmd_node *node_get(enum node_type node);
+
+
+/* Argument parsing prototypes --------------------------------------------- */
+
+/*
+ * Concatenates argv[shift] through argv[argc-1] into a single NUL-terminated
+ * string with a space between each element.
+ *
+ * The returned string is allocated as MTYPE_TMP.
+ *
+ * argv
+ *    Command line array to concatenate.
+ *
+ * argc
+ *    Number of elements in argv.
+ *
+ * shift
+ *    Index into argv to start at.
+ *
+ * Returns:
+ *    NULL if shift >= argc.
+ */
 extern char *argv_concat(struct cmd_token **argv, int argc, int shift);
 
 /*
@@ -413,7 +502,6 @@ extern int command_config_read_one_line(struct vty *vty,
 					const struct cmd_element **,
 					int use_config_node);
 extern int config_from_file(struct vty *, FILE *, unsigned int *line_num);
-extern enum node_type node_parent(enum node_type);
 extern int cmd_execute_command(vector, struct vty *,
 			       const struct cmd_element **, int);
 extern int cmd_execute_command_strict(vector, struct vty *,

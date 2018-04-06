@@ -2006,9 +2006,12 @@ static void prefix_list_reset_afi(afi_t afi, int orf)
 
 
 /* Prefix-list node. */
-static struct cmd_node prefix_node = {PREFIX_NODE,
-				      "", /* Prefix list has no interface. */
-				      1};
+static struct cmd_node prefix_node = {
+	.parent = CLI_CONFIG_PARENT,
+	.node = PREFIX_NODE,
+	.prompt = "",
+	.vtysh = 1,
+};
 
 static int config_write_prefix_ipv4(struct vty *vty)
 {
@@ -2069,8 +2072,11 @@ static void prefix_list_init_ipv4(void)
 
 /* Prefix-list node. */
 static struct cmd_node prefix_ipv6_node = {
-	PREFIX_IPV6_NODE, "", /* Prefix list has no interface. */
-	1};
+	.parent = CLI_CONFIG_PARENT,
+	.node = PREFIX_IPV6_NODE,
+	.prompt = "",
+	.vtysh = 1,
+};
 
 static int config_write_prefix_ipv6(struct vty *vty)
 {
