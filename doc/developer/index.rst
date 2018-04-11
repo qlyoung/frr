@@ -10,3 +10,4 @@ Welcome to FRR's documentation!
    bgpd
    ospf
    zebra
+   vtysh
