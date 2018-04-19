@@ -220,7 +220,8 @@ static void node_add(struct cmd_node *node)
 	/* insert in graph */
 	pn = graph_find_node(cli.mgraph, parent);
 	cn = graph_new_node(cli.mgraph, node, NULL);
-	graph_add_edge(pn, cn);
+	if (pn)
+		graph_add_edge(pn, cn);
 }
 
 int node_change_vty(struct vty *vty, enum node_type to)
@@ -282,10 +283,10 @@ static int cmd_hash_cmp(const void *a, const void *b)
 	return a == b;
 }
 
+void install_default(enum node_type node);
+
 void install_node(struct cmd_node *node, int (*func)(struct vty *))
 {
-	vector_ensure(cli.mvec, node->node);
-
 	if (vector_slot(cli.mvec, node->node))
 		fprintf(stderr, "Duplicate install of node %d (%s)", node->node,
 			node_names[node->node]);
@@ -307,16 +308,36 @@ void install_node(struct cmd_node *node, int (*func)(struct vty *))
 	node_add(node);
 }
 
+/*
+ * Initialize CLI datastructures.
+ *
+ * All special-case initialization should be done here. Strongly avoid writing
+ * any code that is conditional on the identifier of a node, as this leads to
+ * maintenance nightmare whenever any one of those nodes needs to be changed or
+ * another added to its number.
+ */
 static void nodes_init(void)
 {
-	cli.root = &root_node;
-	cli.mvec = vector_init(VECTOR_MIN_SIZE);
+	/* initialize vector and graph */
+	cli.mvec = vector_init(NODE_TYPE_MAX);
 	cli.mgraph = graph_new();
+
 	/* manually install root node */
-	vector_set_index(cli.mvec, root_node.node, &root_node);
+	cli.root = &root_node;
+
+	/*
+	 * mvec index corresponding to INVALID_NODE is intentionally NULL, and
+	 * this node has no presence in the graph
+	 */
+	vector_set_index(cli.mvec, INVALID_NODE, NULL);
+	/*
+	 * root node has no parent and so will cause add_node() to warn, which
+	 * we do not want; add manually
+	 */
+	vector_set_index(cli.mvec, ROOT_NODE, &root_node);
 	graph_new_node(cli.mgraph, &root_node, NULL);
-	/* parent of all hidden nodes used for config purposes */
-	install_node(&cli_config_parent, NULL);
+	/* config parent does not need any of its datastructures initialized */
+	node_add(&cli_config_parent);
 }
 
 
@@ -574,8 +595,10 @@ void install_element(enum node_type ntype, struct cmd_element *cmd)
 	 * been installed there first.
 	 */
 	if (ntype == VIEW_NODE) {
+		/* cnode will be null if ENABLE_NODE has not been installed yet;
+		 * that's okay */
 		cnode = node_get(ENABLE_NODE);
-		if (hash_lookup(cnode->cmd_hash, cmd) == NULL)
+		if (cnode && hash_lookup(cnode->cmd_hash, cmd) == NULL)
 			install_element(ENABLE_NODE, cmd);
 	}
 }
@@ -1642,8 +1665,8 @@ int cmd_list_cmds(struct vty *vty, int do_permute)
 }
 
 /* Help display function for all node. */
-DEFUN (config_list,
-       config_list_cmd,
+DEFUN (list,
+       list_cmd,
        "list [permutations]",
        "Print command list\n"
        "Print all possible command permutations\n")
@@ -2692,26 +2715,40 @@ const char *host_config_get(void)
 	return host.config;
 }
 
+/*
+ * Install commands that belong in every node.
+ *
+ * None of these commands should execute privileged operations or affect
+ * program state in any functional or persistent way. Assume these can be run
+ * by an unprivileged user.
+ *
+ * While we provide no guarantees of security for the UI, legacy attempts at
+ * password protection remain available to users. We can at least try to
+ * mitigate damage caused by unwary users configuring Telnet or VTYSH access as
+ * privilege brokers.
+ */
 void install_default(enum node_type node)
 {
 	install_element(node, &config_exit_cmd);
 	install_element(node, &config_quit_cmd);
 	install_element(node, &config_end_cmd);
 	install_element(node, &config_help_cmd);
-	install_element(node, &config_list_cmd);
+	install_element(node, &list_cmd);
 	install_element(node, &find_cmd);
-
-	install_element(node, &config_write_cmd);
-	install_element(node, &show_running_config_cmd);
-
 	install_element(node, &autocomplete_cmd);
 }
 
-/* Initialize command interface. Install basic nodes and commands.
+/*
+ * Initialize command interface.
  *
- * terminal = 0 -- vtysh / no logging, no config control
- * terminal = 1 -- normal daemon
- * terminal = -1 -- watchfrr / no logging, but minimal config control */
+ * Installs basic nodes and commands.
+ *
+ * terminal
+ *    Configures what set of nodes and commands are installed.
+ *        0 -- vtysh / no logging, no config control
+ *        1 -- normal daemon
+ *       -1 -- watchfrr / no logging, but minimal config control
+ */
 void cmd_init(int terminal)
 {
 	struct utsname names;
@@ -2752,18 +2789,23 @@ void cmd_init(int terminal)
 	install_node(&enable_node, NULL);
 	install_node(&config_node, config_write_host);
 
-	/* Each node's basic commands. */
+	/*
+	 * Install unprivileged top-level commands. These will be automatically
+	 * installed in ENABLE_NODE by install_element().
+	 */
 	install_element(VIEW_NODE, &show_version_cmd);
+        install_element(VIEW_NODE, &dump_nodes_cmd);
+	install_element(VIEW_NODE, &list_cmd);
+	install_element(VIEW_NODE, &find_cmd);
+
+	/* Install privileged top-level commands */
 	install_element(ENABLE_NODE, &show_startup_config_cmd);
 	install_element(ENABLE_NODE, &debug_memstats_cmd);
-	install_element(VIEW_NODE, &find_cmd);
-        install_element(VIEW_NODE, &dump_nodes_cmd);
+	install_element(ENABLE_NODE, &config_write_cmd);
 
-	/* We cannot do this because it conflicts with overrides in VTYSH. */
-	/* install_default(ENABLE_NODE); */
-
+	/* Install daemon-only commands */
 	if (terminal) {
-		install_element(VIEW_NODE, &config_list_cmd);
+		install_element(VIEW_NODE, &show_running_config_cmd);
 		install_element(VIEW_NODE, &config_exit_cmd);
 		install_element(VIEW_NODE, &config_quit_cmd);
 		install_element(VIEW_NODE, &config_help_cmd);
@@ -2775,7 +2817,6 @@ void cmd_init(int terminal)
 		install_element(VIEW_NODE, &echo_cmd);
 		install_element(VIEW_NODE, &autocomplete_cmd);
 
-		install_element(ENABLE_NODE, &config_end_cmd);
 		install_element(ENABLE_NODE, &config_disable_cmd);
 		install_element(ENABLE_NODE, &config_terminal_cmd);
 		install_element(ENABLE_NODE, &copy_runningconf_startupconf_cmd);
