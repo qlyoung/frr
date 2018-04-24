@@ -1271,6 +1271,8 @@ void zserv_nexthop_num_warn(const char *caller, const struct prefix *p,
 
 static void zread_route_add(ZAPI_HANDLER_ARGS)
 {
+	static bool seen;
+	static time_t first;
 	struct stream *s;
 	struct zapi_route api;
 	struct zapi_nexthop *api_nh;
@@ -1281,6 +1283,13 @@ static void zread_route_add(ZAPI_HANDLER_ARGS)
 	int i, ret;
 	vrf_id_t vrf_id = 0;
 	struct ipaddr vtep_ip;
+	struct prefix z;
+
+	if (!seen) {
+		first = monotime(NULL);
+		seen = true;
+	}
+
 
 	s = msg;
 	if (zapi_route_decode(s, &api) < 0) {
@@ -1289,6 +1298,14 @@ static void zread_route_add(ZAPI_HANDLER_ARGS)
 				   __PRETTY_FUNCTION__);
 		return;
 	}
+
+	z.u.prefix4.s_addr = 0x00;
+	if (!memcmp(&api.prefix.u.prefix4.s_addr, &z.u.prefix4.s_addr, sizeof(z.u.prefix4.s_addr))) {
+		time_t diff = monotime(NULL);
+		zlog_warn("Elapsed time: %lu\n", diff - first);
+		seen = false;
+	}
+
 
 	if (IS_ZEBRA_DEBUG_RECV) {
 		char buf_prefix[PREFIX_STRLEN];
@@ -1496,15 +1513,30 @@ static void zread_route_add(ZAPI_HANDLER_ARGS)
 
 static void zread_route_del(ZAPI_HANDLER_ARGS)
 {
+	static bool seen;
+	static time_t first;
 	struct stream *s;
 	struct zapi_route api;
 	afi_t afi;
 	struct prefix_ipv6 *src_p = NULL;
 	uint32_t table_id;
+	struct prefix z;
+
+	if (!seen) {
+		first = monotime(NULL);
+		seen = true;
+	}
 
 	s = msg;
 	if (zapi_route_decode(s, &api) < 0)
 		return;
+
+	z.u.prefix4.s_addr = 0x00;
+	if (!memcmp(&api.prefix.u.prefix4.s_addr, &z.u.prefix4.s_addr, sizeof(z.u.prefix4.s_addr))) {
+		time_t diff = monotime(NULL);
+		zlog_warn("Elapsed time: %lu\n", diff - first);
+		seen = false;
+	}
 
 	afi = family2afi(api.prefix.family);
 	if (afi != AFI_IP6 && CHECK_FLAG(api.message, ZAPI_MESSAGE_SRCPFX)) {
