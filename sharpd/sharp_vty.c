@@ -116,6 +116,62 @@ DEFPY (install_routes,
 		p.u.prefix4.s_addr = htonl(++temp);
 	}
 
+	memset(&p.u.prefix4.s_addr, 0x00, sizeof(p.u.prefix4.s_addr));
+	route_add(&p, &nhop);
+
+	return CMD_SUCCESS;
+}
+
+DEFPY (thrash,
+       thrash_cmd,
+       "sharp thrash routes A.B.C.D$start nexthop A.B.C.D$nexthop (1-1000000)$routes (1-1000)$n",
+       "Sharp routing Protocol\n"
+       "install some routes\n"
+       "Routes to install\n"
+       "Address to start /32 generation at\n"
+       "Nexthop to use\n"
+       "Nexthop address\n"
+       "How many to create\n")
+{
+	int i;
+	struct prefix p;
+	struct nexthop nhop;
+	uint32_t temp;
+
+	total_routes = routes;
+	installed_routes = 0;
+
+	memset(&p, 0, sizeof(p));
+	memset(&nhop, 0, sizeof(nhop));
+
+	p.family = AF_INET;
+	p.prefixlen = 32;
+	p.u.prefix4 = start;
+
+	nhop.gate.ipv4 = nexthop;
+	nhop.type = NEXTHOP_TYPE_IPV4;
+
+	for (unsigned int j = 0; j < n; j++) {
+		zlog_debug("Inserting %ld routes", routes);
+		p.u.prefix4 = start;
+
+		temp = ntohl(p.u.prefix4.s_addr);
+		for (i = 0; i < routes; i++) {
+			route_add(&p, &nhop);
+			p.u.prefix4.s_addr = htonl(++temp);
+		}
+
+		p.u.prefix4 = start;
+		temp = ntohl(p.u.prefix4.s_addr);
+		for (i = 0; i < routes; i++) {
+			route_delete(&p);
+			p.u.prefix4.s_addr = htonl(++temp);
+		}
+	}
+
+	memset(&p.u.prefix4.s_addr, 0x00, sizeof(p.u.prefix4.s_addr));
+	route_add(&p, &nhop);
+
 	return CMD_SUCCESS;
 }
 
@@ -179,12 +235,16 @@ DEFPY (remove_routes,
 		p.u.prefix4.s_addr = htonl(++temp);
 	}
 
+	memset(&p.u.prefix4.s_addr, 0x00, sizeof(p.u.prefix4.s_addr));
+	route_delete(&p);
+
 	return CMD_SUCCESS;
 }
 
 void sharp_vty_init(void)
 {
 	install_element(ENABLE_NODE, &install_routes_cmd);
+	install_element(ENABLE_NODE, &thrash_cmd);
 	install_element(ENABLE_NODE, &remove_routes_cmd);
 	install_element(ENABLE_NODE, &vrf_label_cmd);
 	install_element(ENABLE_NODE, &watch_nexthop_v6_cmd);
