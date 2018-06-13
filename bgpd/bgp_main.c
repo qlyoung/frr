@@ -42,6 +42,7 @@
 #include "bfd.h"
 #include "libfrr.h"
 #include "ns.h"
+#include "ferr.h"
 
 #include "bgpd/bgpd.h"
 #include "bgpd/bgp_attr.h"
@@ -84,6 +85,19 @@ void sigusr1(void);
 
 static void bgp_exit(int);
 static void bgp_vrf_terminate(void);
+
+enum bgp_ferr_refs {
+	BGP_ERR_START = BGP_FERR_START,
+	BGP_EXAMPLE_ERR,
+	BGP_ERR_END = BGP_FERR_END,
+};
+
+static struct ferr_ref example_err = {
+	.code = BGP_EXAMPLE_ERR,
+	.title = "Example Error",
+	.description = "An example error made to be used as an example of the error reference system.",
+	.suggestion = "Ignore this error."
+};
 
 static struct quagga_signal_t bgp_signals[] = {
 	{
@@ -415,6 +429,12 @@ int main(int argc, char **argv)
 
 	/* BGP related initialization.  */
 	bgp_init();
+
+	ferr_ref_init();
+	ferr_ref_add(&example_err);
+
+	zlog_ferr(BGP_EXAMPLE_ERR, "additional information %d", 42);
+
 
 	snprintf(bgpd_di.startinfo, sizeof(bgpd_di.startinfo), ", bgp@%s:%d",
 		 (bm->address ? bm->address : "<all>"), bm->port);
