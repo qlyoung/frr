@@ -438,7 +438,6 @@ int main(int argc, char **argv)
 	/* BGP related initialization.  */
 	bgp_init();
 
-	ferr_ref_init();
 	ferr_ref_add(example_err);
 
 	zlog_ferr(BGP_EXAMPLE_ERR, "additional information %d", 42);
