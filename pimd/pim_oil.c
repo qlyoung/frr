@@ -182,10 +182,6 @@ struct channel_oil *pim_channel_oil_add(struct pim_instance *pim,
 	}
 
 	c_oil = XCALLOC(MTYPE_PIM_CHANNEL_OIL, sizeof(*c_oil));
-	if (!c_oil) {
-		zlog_err("PIM XCALLOC(%zu) failure", sizeof(*c_oil));
-		return NULL;
-	}
 
 	c_oil->oil.mfcc_mcastgrp = sg->grp;
 	c_oil->oil.mfcc_origin = sg->src;

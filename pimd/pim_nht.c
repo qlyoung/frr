@@ -92,10 +92,6 @@ static struct pim_nexthop_cache *pim_nexthop_cache_add(struct pim_instance *pim,
 
 	pnc = XCALLOC(MTYPE_PIM_NEXTHOP_CACHE,
 		      sizeof(struct pim_nexthop_cache));
-	if (!pnc) {
-		zlog_err("%s: NHT PIM XCALLOC failure ", __PRETTY_FUNCTION__);
-		return NULL;
-	}
 	pnc->rpf.rpf_addr.family = rpf_addr->rpf_addr.family;
 	pnc->rpf.rpf_addr.prefixlen = rpf_addr->rpf_addr.prefixlen;
 	pnc->rpf.rpf_addr.u.prefix4.s_addr =

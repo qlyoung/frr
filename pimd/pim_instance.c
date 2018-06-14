@@ -69,8 +69,6 @@ static struct pim_instance *pim_instance_init(struct vrf *vrf)
 	char hash_name[64];
 
 	pim = XCALLOC(MTYPE_PIM_PIM_INSTANCE, sizeof(struct pim_instance));
-	if (!pim)
-		return NULL;
 
 	pim_if_init(pim);
 

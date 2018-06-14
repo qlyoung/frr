@@ -369,15 +369,6 @@ static struct ssmpingd_sock *ssmpingd_new(struct pim_instance *pim,
 	}
 
 	ss = XCALLOC(MTYPE_PIM_SSMPINGD, sizeof(*ss));
-	if (!ss) {
-		char source_str[INET_ADDRSTRLEN];
-		pim_inet4_dump("<src?>", source_addr, source_str,
-			       sizeof(source_str));
-		zlog_err("%s: XCALLOC(%zu) failure for ssmpingd source %s",
-			 __PRETTY_FUNCTION__, sizeof(*ss), source_str);
-		close(sock_fd);
-		return 0;
-	}
 
 	ss->pim = pim;
 	ss->sock_fd = sock_fd;
