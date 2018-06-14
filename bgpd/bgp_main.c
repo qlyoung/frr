@@ -92,11 +92,19 @@ enum bgp_ferr_refs {
 	BGP_ERR_END = BGP_FERR_END,
 };
 
-static struct ferr_ref example_err = {
-	.code = BGP_EXAMPLE_ERR,
-	.title = "Example Error",
-	.description = "An example error made to be used as an example of the error reference system.",
-	.suggestion = "Ignore this error."
+static struct ferr_ref example_err[] = {
+	{
+		.code = BGP_EXAMPLE_ERR,
+		.title = "Example Error",
+		.description = "An example error made to be used as an example of the error reference system.",
+		.suggestion = "Ignore this error."
+	},
+	{
+		.code = END_FERR,
+		.title = "End of Errors",
+		.description = "This should not show up",
+		.suggestion = "Ignore this error."
+	},
 };
 
 static struct quagga_signal_t bgp_signals[] = {
@@ -430,8 +438,7 @@ int main(int argc, char **argv)
 	/* BGP related initialization.  */
 	bgp_init();
 
-	ferr_ref_init();
-	ferr_ref_add(&example_err);
+	ferr_ref_add(example_err);
 
 	zlog_ferr(BGP_EXAMPLE_ERR, "additional information %d", 42);
 

@@ -104,6 +104,7 @@ struct ferr {
 #define OSPF_FERR_END 0x03FFFFFF
 #define ZEBRA_FERR_START 0x04000001
 #define ZEBRA_FERR_END 0x04FFFFFF
+#define END_FERR 0xFFFFFFFF
 
 struct ferr_ref {
 	/* Unique error code displayed to end user as a reference. -1 means
@@ -120,6 +121,11 @@ struct ferr_ref {
 void ferr_ref_add(struct ferr_ref *ref);
 struct ferr_ref *ferr_ref_get(uint32_t code);
 void ferr_ref_display(struct vty *, uint32_t code);
+
+/*
+ * This function should be called by the
+ * code in libfrr.c
+ */
 void ferr_ref_init(void);
 void ferr_ref_fini(void);
 
