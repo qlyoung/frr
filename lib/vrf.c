@@ -516,14 +516,14 @@ int vrf_socket(int domain, int type, int protocol, vrf_id_t vrf_id,
 
 	ret = vrf_switch_to_netns(vrf_id);
 	if (ret < 0)
-		zlog_ferr(LIB_ERR_VRF_SOCKET,
+		zlog_ferr(LIB_ERR_SOCKET,
 			  "%s: Can't switch to VRF %u (%s)", __func__, vrf_id,
 			  safe_strerror(errno));
 	ret = socket(domain, type, protocol);
 	save_errno = errno;
 	ret2 = vrf_switchback_to_initial();
 	if (ret2 < 0)
-		zlog_ferr(LIB_ERR_VRF_SOCKET,
+		zlog_ferr(LIB_ERR_SOCKET,
 			  "%s: Can't switchback from VRF %u (%s)", __func__,
 			  vrf_id, safe_strerror(errno));
 	errno = save_errno;
@@ -878,14 +878,14 @@ int vrf_getaddrinfo(const char *node, const char *service,
 
 	ret = vrf_switch_to_netns(vrf_id);
 	if (ret < 0)
-		zlog_ferr(LIB_ERR_VRF_SOCKET,
+		zlog_ferr(LIB_ERR_SOCKET,
 			  "%s: Can't switch to VRF %u (%s)", __func__, vrf_id,
 			  safe_strerror(errno));
 	ret = getaddrinfo(node, service, hints, res);
 	save_errno = errno;
 	ret2 = vrf_switchback_to_initial();
 	if (ret2 < 0)
-		zlog_ferr(LIB_ERR_VRF_SOCKET,
+		zlog_ferr(LIB_ERR_SOCKET,
 			  "%s: Can't switchback from VRF %u (%s)", __func__,
 			  vrf_id, safe_strerror(errno));
 	errno = save_errno;
@@ -898,7 +898,7 @@ int vrf_ioctl(vrf_id_t vrf_id, int d, unsigned long request, char *params)
 
 	ret = vrf_switch_to_netns(vrf_id);
 	if (ret < 0) {
-		zlog_ferr(LIB_ERR_VRF_SOCKET,
+		zlog_ferr(LIB_ERR_SOCKET,
 			  "%s: Can't switch to VRF %u (%s)", __func__, vrf_id,
 			  safe_strerror(errno));
 		return 0;
@@ -907,7 +907,7 @@ int vrf_ioctl(vrf_id_t vrf_id, int d, unsigned long request, char *params)
 	saved_errno = errno;
 	ret = vrf_switchback_to_initial();
 	if (ret < 0)
-		zlog_ferr(LIB_ERR_VRF_SOCKET,
+		zlog_ferr(LIB_ERR_SOCKET,
 			  "%s: Can't switchback from VRF %u (%s)", __func__,
 			  vrf_id, safe_strerror(errno));
 	errno = saved_errno;
@@ -921,14 +921,14 @@ int vrf_sockunion_socket(const union sockunion *su, vrf_id_t vrf_id,
 
 	ret = vrf_switch_to_netns(vrf_id);
 	if (ret < 0)
-		zlog_ferr(LIB_ERR_VRF_SOCKET,
+		zlog_ferr(LIB_ERR_SOCKET,
 			  "%s: Can't switch to VRF %u (%s)", __func__, vrf_id,
 			  safe_strerror(errno));
 	ret = sockunion_socket(su);
 	save_errno = errno;
 	ret2 = vrf_switchback_to_initial();
 	if (ret2 < 0)
-		zlog_ferr(LIB_ERR_VRF_SOCKET,
+		zlog_ferr(LIB_ERR_SOCKET,
 			  "%s: Can't switchback from VRF %u (%s)", __func__,
 			  vrf_id, safe_strerror(errno));
 	errno = save_errno;
