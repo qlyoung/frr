@@ -145,10 +145,6 @@ struct pim_interface *pim_if_new(struct interface *ifp, int igmp, int pim)
 	zassert(!ifp->info);
 
 	pim_ifp = XCALLOC(MTYPE_PIM_INTERFACE, sizeof(*pim_ifp));
-	if (!pim_ifp) {
-		zlog_err("PIM XCALLOC(%zu) failure", sizeof(*pim_ifp));
-		return 0;
-	}
 
 	pim_ifp->options = 0;
 	pim_ifp->pim = pim_get_pim_instance(ifp->vrf_id);
@@ -404,8 +400,6 @@ static int pim_sec_addr_add(struct pim_interface *pim_ifp, struct prefix *addr)
 	}
 
 	sec_addr = XCALLOC(MTYPE_PIM_SEC_ADDR, sizeof(*sec_addr));
-	if (!sec_addr)
-		return changed;
 
 	changed = 1;
 	sec_addr->addr = *addr;
@@ -1286,20 +1280,6 @@ static struct igmp_join *igmp_join_new(struct interface *ifp,
 	}
 
 	ij = XCALLOC(MTYPE_PIM_IGMP_JOIN, sizeof(*ij));
-	if (!ij) {
-		char group_str[INET_ADDRSTRLEN];
-		char source_str[INET_ADDRSTRLEN];
-		pim_inet4_dump("<grp?>", group_addr, group_str,
-			       sizeof(group_str));
-		pim_inet4_dump("<src?>", source_addr, source_str,
-			       sizeof(source_str));
-		zlog_err(
-			"%s: XCALLOC(%zu) failure for IGMP group %s source %s on interface %s",
-			__PRETTY_FUNCTION__, sizeof(*ij), group_str, source_str,
-			ifp->name);
-		close(join_fd);
-		return 0;
-	}
 
 	ij->sock_fd = join_fd;
 	ij->group_addr = group_addr;
