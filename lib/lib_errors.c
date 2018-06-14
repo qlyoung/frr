@@ -24,7 +24,7 @@
 
 static struct ferr_ref ferr_lib_err[] = {
 	{
-		.code = LIB_ERR_PRIVILEDGES,
+		.code = LIB_ERR_PRIVILEGES,
 		.title = "Failure to raise or lower priviledges",
 		.description = "FRR attempted to raise or lower it's priviledges and was unable to do so",
 		.suggestion = "Ensure that you are running FRR as the frr user and that the user has\nSufficient priviledges to properly access root priviledges"
