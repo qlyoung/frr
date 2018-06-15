@@ -139,7 +139,7 @@ static void sigint(void)
 
 	frr_early_fini();
 
-	list_delete_all_node(zebrad.client_list);
+	zserv_stop();
 	zebra_ptm_finish();
 
 	if (retain_mode)

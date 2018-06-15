@@ -208,6 +208,14 @@ extern void zserv_init(void);
 extern void zserv_start(char *path);
 
 /*
+ * Stop Zebra API server.
+ *
+ * Closes all open connections, closes the server socket and frees all
+ * resources.
+ */
+extern void zserv_stop();
+
+/*
  * Send a message to a connected Zebra API client.
  *
  * client

@@ -809,6 +809,10 @@ void zserv_start(char *path)
 	zserv_event(NULL, ZSERV_ACCEPT);
 }
 
+void zserv_stop(void)
+{
+}
+
 void zserv_event(struct zserv *client, enum zserv_event event)
 {
 	switch (event) {
