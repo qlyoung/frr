@@ -52,6 +52,7 @@
 #include "bgpd/bgp_route.h"
 #include "bgpd/bgp_dump.h"
 #include "bgpd/bgp_debug.h"
+#include "bgpd/bgp_errors.h"
 #include "bgpd/bgp_community.h"
 #include "bgpd/bgp_attr.h"
 #include "bgpd/bgp_regex.h"
@@ -682,12 +683,6 @@ struct peer_af *peer_af_create(struct peer *peer, afi_t afi, safi_t safi)
 
 	/* Allocate new peer af */
 	af = XCALLOC(MTYPE_BGP_PEER_AF, sizeof(struct peer_af));
-
-	if (af == NULL) {
-		zlog_err("Could not create af structure for peer %s",
-			 peer->host);
-		return NULL;
-	}
 
 	peer->peer_af_array[afid] = af;
 	af->afi = afi;
@@ -1809,8 +1804,8 @@ static int peer_activate_af(struct peer *peer, afi_t afi, safi_t safi)
 	int active;
 
 	if (CHECK_FLAG(peer->sflags, PEER_STATUS_GROUP)) {
-		zlog_err("%s was called for peer-group %s", __func__,
-			 peer->host);
+		zlog_ferr(BGP_ERR_PEER_GROUP, "%s was called for peer-group %s",
+			  __func__, peer->host);
 		return 1;
 	}
 
@@ -1923,8 +1918,8 @@ static int non_peergroup_deactivate_af(struct peer *peer, afi_t afi,
 				       safi_t safi)
 {
 	if (CHECK_FLAG(peer->sflags, PEER_STATUS_GROUP)) {
-		zlog_err("%s was called for peer-group %s", __func__,
-			 peer->host);
+		zlog_ferr(BGP_ERR_PEER_GROUP, "%s was called for peer-group %s",
+			  __func__, peer->host);
 		return 1;
 	}
 
@@ -1936,8 +1931,9 @@ static int non_peergroup_deactivate_af(struct peer *peer, afi_t afi,
 	peer->afc[afi][safi] = 0;
 
 	if (peer_af_delete(peer, afi, safi) != 0) {
-		zlog_err("couldn't delete af structure for peer %s",
-			 peer->host);
+		zlog_ferr(BGP_ERR_PEER_DELETE,
+			  "couldn't delete af structure for peer %s",
+			  peer->host);
 		return 1;
 	}
 
@@ -1986,8 +1982,9 @@ int peer_deactivate(struct peer *peer, afi_t afi, safi_t safi)
 		group = peer->group;
 
 		if (peer_af_delete(peer, afi, safi) != 0) {
-			zlog_err("couldn't delete af structure for peer %s",
-				 peer->host);
+			zlog_ferr(BGP_ERR_PEER_DELETE,
+				  "couldn't delete af structure for peer %s",
+				  peer->host);
 		}
 
 		for (ALL_LIST_ELEMENTS(group->peer, node, nnode, tmp_peer)) {
@@ -2694,6 +2691,62 @@ int peer_group_bind(struct bgp *bgp, union sockunion *su, struct peer *peer,
 		if (peer_active(peer))
 			bgp_timer_set(peer);
 	}
+
+	return 0;
+}
+
+int peer_group_unbind(struct bgp *bgp, struct peer *peer,
+		      struct peer_group *group)
+{
+	struct peer *other;
+	afi_t afi;
+	safi_t safi;
+
+	if (group != peer->group)
+		return BGP_ERR_PEER_GROUP_MISMATCH;
+
+	FOREACH_AFI_SAFI (afi, safi) {
+		if (peer->afc[afi][safi]) {
+			peer->afc[afi][safi] = 0;
+			peer_af_flag_reset(peer, afi, safi);
+
+			if (peer_af_delete(peer, afi, safi) != 0) {
+				zlog_ferr(
+					BGP_ERR_PEER_DELETE,
+					"couldn't delete af structure for peer %s",
+					peer->host);
+			}
+		}
+	}
+
+	assert(listnode_lookup(group->peer, peer));
+	peer_unlock(peer); /* peer group list reference */
+	listnode_delete(group->peer, peer);
+	peer->group = NULL;
+	other = peer->doppelganger;
+
+	if (group->conf->as) {
+		peer_delete(peer);
+		if (other && other->status != Deleted) {
+			if (other->group) {
+				peer_unlock(other);
+				listnode_delete(group->peer, other);
+			}
+			other->group = NULL;
+			peer_delete(other);
+		}
+		return 0;
+	}
+
+	bgp_bfd_deregister_peer(peer);
+	peer_global_config_reset(peer);
+
+	if (BGP_IS_VALID_STATE_FOR_NOTIF(peer->status)) {
+		peer->last_reset = PEER_DOWN_RMAP_UNBIND;
+		bgp_notify_send(peer, BGP_NOTIFY_CEASE,
+				BGP_NOTIFY_CEASE_CONFIG_CHANGE);
+	} else
+		bgp_session_reset(peer);
 
 	return 0;
 }
