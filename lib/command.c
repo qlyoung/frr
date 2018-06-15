@@ -458,32 +458,6 @@ void uninstall_element(enum node_type ntype, struct cmd_element *cmd)
 }
 
 
-static const unsigned char itoa64[] =
-	"./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-
-static void to64(char *s, long v, int n)
-{
-	while (--n >= 0) {
-		*s++ = itoa64[v & 0x3f];
-		v >>= 6;
-	}
-}
-
-static char *zencrypt(const char *passwd)
-{
-	char salt[6];
-	struct timeval tv;
-	char *crypt(const char *, const char *);
-
-	gettimeofday(&tv, 0);
-
-	to64(&salt[0], random(), 3);
-	to64(&salt[3], tv.tv_usec, 3);
-	salt[5] = '\0';
-
-	return crypt(passwd, salt);
-}
-
 /* This function write configuration of this host. */
 static int config_write_host(struct vty *vty)
 {

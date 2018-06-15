@@ -22,6 +22,7 @@
 #include <ctype.h>
 #include <sys/types.h>
 #include <regex.h>
+#include <sys/time.h>
 
 #include "frrstr.h"
 #include "memory.h"
@@ -160,6 +161,62 @@ bool begins_with(const char *str, const char *prefix)
 		return 0;
 
 	return strncmp(str, prefix, lenprefix) == 0;
+}
+
+static const unsigned char itoa64[] =
+	"./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+static void to64(char *s, long v, int n)
+{
+	while (--n >= 0) {
+		*s++ = itoa64[v & 0x3f];
+		v >>= 6;
+	}
+}
+
+char *zencrypt(const char *passwd)
+{
+	char salt[6];
+	struct timeval tv;
+	char *crypt(const char *, const char *);
+
+	gettimeofday(&tv, 0);
+
+	to64(&salt[0], random(), 3);
+	to64(&salt[3], tv.tv_usec, 3);
+	salt[5] = '\0';
+
+	return crypt(passwd, salt);
+}
+
+#define MOD(a, b) ((((a) % (b)) + (b)) % (b))
+
+char *caesar(bool encrypt, char *text, const char *key)
+{
+        size_t kl = strlen(key);
+        size_t tl = strlen(text);
+        int16_t w[tl + 1];
+
+        for (size_t i = 0; i < tl; ++i)
+                if (!(text[i] >= 32 && text[i] <= 126))
+                        return NULL;
+
+        for (size_t i = 0; i < kl; ++i)
+                if (!(key[i] >= 32 && key[i] <= 126))
+                        return NULL;
+
+        for (size_t i = 0; i < tl; ++i) {
+                w[i] = text[i];
+                w[i] += -32 + (2 * !!encrypt - 1) * key[i % kl];
+                w[i] = MOD((w[i]), (127 - 32)) + 32;
+        }
+
+        for (size_t i = 0; i < tl; i++)
+                text[i] = w[i];
+
+        w[tl] = 0x00;
+
+        return text;
 }
 
 int all_digit(const char *str)

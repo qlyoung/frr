@@ -108,4 +108,50 @@ bool begins_with(const char *str, const char *prefix);
  */
 int all_digit(const char *str);
 
+/*
+ * One-way salted encryption.
+ *
+ * Uses the base system's POSIX.1-2001 / POSIX.1-2008 crypt() function. The
+ * current system clock and a pseudo-random value, both mapped to printable
+ * ASCII characters, are used as salt inputs. The salt is prepended to the
+ * encrypted password (see crypt(3)) and does not need to be saved.
+ *
+ * passwd
+ *    plaintext password to encrypt
+ *
+ * Returns:
+ *    encrypted password; will be overwritten with each call to crypt(3), so
+ *    copy it if you need to save it.
+ */
+char *zencrypt(const char *passwd);
+
+/*
+ * Reversible obfuscation.
+ *
+ * Implements a Caesar cipher. Printable ASCII in, printable ASCII out.
+ *
+ * --------------------------------------------------------------------------
+ * SUBSTITUTION CIPHERS OFFER NO SECURITY. DO NOT USE THIS IN SECURE SYSTEMS.
+ * SUBSTITUTION CIPHERS OFFER NO SECURITY. DO NOT USE THIS IN SECURE SYSTEMS.
+ * SUBSTITUTION CIPHERS OFFER NO SECURITY. DO NOT USE THIS IN SECURE SYSTEMS.
+ * SUBSTITUTION CIPHERS OFFER NO SECURITY. DO NOT USE THIS IN SECURE SYSTEMS.
+ * SUBSTITUTION CIPHERS OFFER NO SECURITY. DO NOT USE THIS IN SECURE SYSTEMS.
+ * --------------------------------------------------------------------------
+ *
+ * encrypt
+ *    true  = encrypt
+ *    false = decrypt
+ *
+ * text
+ *    null-terminated input text; should be plaintext when encrypt = true,
+ *    ciphertext when encrypt = false; must be printable ASCII
+ *
+ * key
+ *    null terminated key; must be printable ASCII
+ *
+ * Returns:
+ *    `text`, encrypted or decrypted in-place.
+ */
+char *caesar(bool encrypt, char *text, const char *key);
+
 #endif /* _FRRSTR_H_ */
