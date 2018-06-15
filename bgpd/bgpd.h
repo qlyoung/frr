@@ -946,6 +946,7 @@ struct peer {
 #define PEER_FLAG_ALLOWAS_IN_ORIGIN         (1 << 25) /* allowas-in origin */
 #define PEER_FLAG_SEND_LARGE_COMMUNITY      (1 << 26) /* Send large Communities */
 
+#define BGP_PASSWD_OBFUSCATION_KEY "71c990efaec2a62d95c768341563bc0c"
 	/* MD5 password */
 	char *password;
 

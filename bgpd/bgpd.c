@@ -45,6 +45,7 @@
 #include "lib/json.h"
 #include "frr_pthread.h"
 #include "bitfield.h"
+#include "frrstr.h"
 
 #include "bgpd/bgpd.h"
 #include "bgpd/bgp_table.h"
@@ -5491,6 +5492,8 @@ int peer_password_set(struct peer *peer, const char *password)
 		return 0;
 	XFREE(MTYPE_PEER_PASSWORD, peer->password);
 	peer->password = XSTRDUP(MTYPE_PEER_PASSWORD, password);
+	if (host.encrypt)
+		caesar(false, peer->password, BGP_PASSWD_OBFUSCATION_KEY);
 
 	/* Check if handling a regular peer. */
 	if (!CHECK_FLAG(peer->sflags, PEER_STATUS_GROUP)) {
@@ -5529,6 +5532,9 @@ int peer_password_set(struct peer *peer, const char *password)
 		if (member->password)
 			XFREE(MTYPE_PEER_PASSWORD, member->password);
 		member->password = XSTRDUP(MTYPE_PEER_PASSWORD, password);
+		if (host.encrypt)
+			caesar(false, member->password,
+			       BGP_PASSWD_OBFUSCATION_KEY);
 
 		/* Send notification or reset peer depending on state. */
 		if (BGP_IS_VALID_STATE_FOR_NOTIF(member->status))
@@ -7046,9 +7052,18 @@ static void bgp_config_write_peer_global(struct vty *vty, struct bgp *bgp,
 	}
 
 	/* password */
-	if (peergroup_flag_check(peer, PEER_FLAG_PASSWORD))
+	if (peergroup_flag_check(peer, PEER_FLAG_PASSWORD)) {
+		if (host.encrypt)
+			caesar(true, peer->password,
+			       BGP_PASSWD_OBFUSCATION_KEY);
+
 		vty_out(vty, " neighbor %s password %s\n", addr,
 			peer->password);
+
+		if (host.encrypt)
+			caesar(false, peer->password,
+			       BGP_PASSWD_OBFUSCATION_KEY);
+	}
 
 	/* neighbor solo */
 	if (CHECK_FLAG(peer->flags, PEER_FLAG_LONESOUL)) {

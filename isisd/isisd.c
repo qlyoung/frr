@@ -36,6 +36,7 @@
 #include "table.h"
 #include "qobj.h"
 #include "spf_backoff.h"
+#include "frrstr.h"
 
 #include "isisd/dict.h"
 #include "isisd/isis_constants.h"
@@ -2055,8 +2056,14 @@ int isis_config_write(struct vty *vty)
 			/* Authentication passwords. */
 			if (area->area_passwd.type
 			    == ISIS_PASSWD_TYPE_HMAC_MD5) {
+				if (host.encrypt)
+					caesar(true, (char *) area->area_passwd.passwd,
+					       ISIS_PASSWD_OBFUSCATION_KEY);
 				vty_out(vty, " area-password md5 %s",
 					area->area_passwd.passwd);
+				if (host.encrypt)
+					caesar(false, (char *) area->area_passwd.passwd,
+					       ISIS_PASSWD_OBFUSCATION_KEY);
 				if (CHECK_FLAG(area->area_passwd.snp_auth,
 					       SNP_AUTH_SEND)) {
 					vty_out(vty, " authenticate snp ");
@@ -2071,8 +2078,14 @@ int isis_config_write(struct vty *vty)
 				write++;
 			} else if (area->area_passwd.type
 				   == ISIS_PASSWD_TYPE_CLEARTXT) {
+				if (host.encrypt)
+					caesar(true, (char *) area->area_passwd.passwd,
+					       ISIS_PASSWD_OBFUSCATION_KEY);
 				vty_out(vty, " area-password clear %s",
 					area->area_passwd.passwd);
+				if (host.encrypt)
+					caesar(false, (char *) area->area_passwd.passwd,
+					       ISIS_PASSWD_OBFUSCATION_KEY);
 				if (CHECK_FLAG(area->area_passwd.snp_auth,
 					       SNP_AUTH_SEND)) {
 					vty_out(vty, " authenticate snp ");
@@ -2088,8 +2101,15 @@ int isis_config_write(struct vty *vty)
 			}
 			if (area->domain_passwd.type
 			    == ISIS_PASSWD_TYPE_HMAC_MD5) {
+				if (host.encrypt)
+					caesar(true, (char *) area->domain_passwd.passwd,
+					       ISIS_PASSWD_OBFUSCATION_KEY);
 				vty_out(vty, " domain-password md5 %s",
 					area->domain_passwd.passwd);
+				if (host.encrypt)
+					caesar(false, (char *)
+					       area->domain_passwd.passwd,
+					       ISIS_PASSWD_OBFUSCATION_KEY);
 				if (CHECK_FLAG(area->domain_passwd.snp_auth,
 					       SNP_AUTH_SEND)) {
 					vty_out(vty, " authenticate snp ");
@@ -2104,8 +2124,18 @@ int isis_config_write(struct vty *vty)
 				write++;
 			} else if (area->domain_passwd.type
 				   == ISIS_PASSWD_TYPE_CLEARTXT) {
+				if (host.encrypt)
+					caesar(true,
+					       (char *)area->domain_passwd
+						       .passwd,
+					       ISIS_PASSWD_OBFUSCATION_KEY);
 				vty_out(vty, " domain-password clear %s",
 					area->domain_passwd.passwd);
+				if (host.encrypt)
+					caesar(false,
+					       (char *)area->domain_passwd
+						       .passwd,
+					       ISIS_PASSWD_OBFUSCATION_KEY);
 				if (CHECK_FLAG(area->domain_passwd.snp_auth,
 					       SNP_AUTH_SEND)) {
 					vty_out(vty, " authenticate snp ");

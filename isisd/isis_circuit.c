@@ -38,6 +38,7 @@
 #include "prefix.h"
 #include "stream.h"
 #include "qobj.h"
+#include "frrstr.h"
 
 #include "isisd/dict.h"
 #include "isisd/isis_constants.h"
@@ -1134,6 +1135,11 @@ int isis_interface_config_write(struct vty *vty)
 					}
 				}
 			}
+
+			if (host.encrypt)
+				caesar(true, (char *)circuit->passwd.passwd,
+				       ISIS_PASSWD_OBFUSCATION_KEY);
+
 			if (circuit->passwd.type == ISIS_PASSWD_TYPE_HMAC_MD5) {
 				vty_out(vty, " isis password md5 %s\n",
 					circuit->passwd.passwd);
@@ -1144,6 +1150,9 @@ int isis_interface_config_write(struct vty *vty)
 					circuit->passwd.passwd);
 				write++;
 			}
+			if (host.encrypt)
+				caesar(false, (char *)circuit->passwd.passwd,
+				       ISIS_PASSWD_OBFUSCATION_KEY);
 			write += circuit_write_mt_settings(circuit, vty);
 		}
 		vty_endframe(vty, "!\n");
@@ -1249,6 +1258,9 @@ static int isis_circuit_passwd_set(struct isis_circuit *circuit,
 
 	circuit->passwd.len = len;
 	strncpy((char *)circuit->passwd.passwd, passwd, 255);
+	if (host.encrypt)
+		caesar(false, (char *)circuit->passwd.passwd,
+		       ISIS_PASSWD_OBFUSCATION_KEY);
 	circuit->passwd.type = passwd_type;
 	return ferr_ok();
 }
