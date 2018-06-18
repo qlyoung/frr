@@ -21,7 +21,6 @@
 #define __LIB_ERRORS_H__
 
 #include "ferr.h"
-#include "lib_errors.h"
 
 enum lib_ferr_refs {
 	LIB_ERR_PRIVILEGES = LIB_FERR_START,
@@ -33,6 +32,10 @@ enum lib_ferr_refs {
 	LIB_ERR_SYSTEM_CALL,
 	LIB_ERR_VTY,
 	LIB_ERR_SNMP,
+	LIB_ERR_INTERFACE,
+	LIB_ERR_NS,
+	LIB_ERR_DEVELOPMENT,
+	LIB_ERR_ZMQ,
 };
 
 extern void lib_error_init(void);

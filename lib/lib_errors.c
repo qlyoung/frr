@@ -77,6 +77,30 @@ static struct ferr_ref ferr_lib_err[] = {
 		.suggestion = "Examine callback message and ensure snmp is properly setup and working"
 	},
 	{
+		.code = LIB_ERR_INTERFACE,
+		.title = "Interface Subsystem Error",
+		.description = "FRR has detected a problem with interface data from the kernel as it deviates\nfrom what we would expect to happen via normal netlink messaging",
+		.suggestion = "Open an Issue with all relevant log files and restart FRR"
+	},
+	{
+		.code = LIB_ERR_NS,
+		.title = "NameSpace Subsystem Error",
+		.description = "FRR has detected a problem with NameSpace data from the kernel as it deviates\nfrom what we would expect to happen via normal kernel messaging",
+		.suggestion = "Open an Issue with all relevant log files and restart FRR"
+	},
+	{
+		.code = LIB_ERR_DEVELOPMENT,
+		.title = "Developmental Escape Error",
+		.description = "FRR has detected an issue where new development has not properly\nupdated all code paths.",
+		.suggestion = "Open an Issue with all relevant log files"
+	},
+	{
+		.code = LIB_ERR_ZMQ,
+		.title = "ZMQ Subsystem Error",
+		.description = "FRR has detected an issue with the Zero MQ subsystem and ZeroMQ\nis not working properly now",
+		.suggestion = "Open an Issue with all relevant log files and restart FRR"
+	},
+	{
 		.code = END_FERR,
 	}
 };
