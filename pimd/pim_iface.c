@@ -75,36 +75,6 @@ void pim_if_terminate(struct pim_instance *pim)
 	return;
 }
 
-static void *if_list_clean(struct pim_interface *pim_ifp)
-{
-	struct pim_ifchannel *ch;
-
-	if (pim_ifp->igmp_join_list)
-		list_delete_and_null(&pim_ifp->igmp_join_list);
-
-	if (pim_ifp->igmp_socket_list)
-		list_delete_and_null(&pim_ifp->igmp_socket_list);
-
-	if (pim_ifp->pim_neighbor_list)
-		list_delete_and_null(&pim_ifp->pim_neighbor_list);
-
-	if (pim_ifp->upstream_switch_list)
-		list_delete_and_null(&pim_ifp->upstream_switch_list);
-
-	if (pim_ifp->sec_addr_list)
-		list_delete_and_null(&pim_ifp->sec_addr_list);
-
-	while (!RB_EMPTY(pim_ifchannel_rb, &pim_ifp->ifchannel_rb)) {
-		ch = RB_ROOT(pim_ifchannel_rb, &pim_ifp->ifchannel_rb);
-
-		pim_ifchannel_delete(ch);
-	}
-
-	XFREE(MTYPE_PIM_INTERFACE, pim_ifp);
-
-	return 0;
-}
-
 static void pim_sec_addr_free(struct pim_secondary_addr *sec_addr)
 {
 	XFREE(MTYPE_PIM_SEC_ADDR, sec_addr);
@@ -182,38 +152,18 @@ struct pim_interface *pim_if_new(struct interface *ifp, int igmp, int pim)
 
 	/* list of struct igmp_sock */
 	pim_ifp->igmp_socket_list = list_new();
-	if (!pim_ifp->igmp_socket_list) {
-		zlog_err("%s: failure: igmp_socket_list=list_new()",
-			 __PRETTY_FUNCTION__);
-		return if_list_clean(pim_ifp);
-	}
 	pim_ifp->igmp_socket_list->del = (void (*)(void *))igmp_sock_free;
 
 	/* list of struct pim_neighbor */
 	pim_ifp->pim_neighbor_list = list_new();
-	if (!pim_ifp->pim_neighbor_list) {
-		zlog_err("%s: failure: pim_neighbor_list=list_new()",
-			 __PRETTY_FUNCTION__);
-		return if_list_clean(pim_ifp);
-	}
 	pim_ifp->pim_neighbor_list->del = (void (*)(void *))pim_neighbor_free;
 
 	pim_ifp->upstream_switch_list = list_new();
-	if (!pim_ifp->upstream_switch_list) {
-		zlog_err("%s: failure: upstream_switch_list=list_new()",
-			 __PRETTY_FUNCTION__);
-		return if_list_clean(pim_ifp);
-	}
 	pim_ifp->upstream_switch_list->del =
 		(void (*)(void *))pim_jp_agg_group_list_free;
 	pim_ifp->upstream_switch_list->cmp = pim_jp_agg_group_list_cmp;
 
 	pim_ifp->sec_addr_list = list_new();
-	if (!pim_ifp->sec_addr_list) {
-		zlog_err("%s: failure: secondary addresslist",
-			 __PRETTY_FUNCTION__);
-		return if_list_clean(pim_ifp);
-	}
 	pim_ifp->sec_addr_list->del = (void (*)(void *))pim_sec_addr_free;
 	pim_ifp->sec_addr_list->cmp =
 		(int (*)(void *, void *))pim_sec_addr_comp;

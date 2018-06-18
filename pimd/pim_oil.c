@@ -107,11 +107,6 @@ void pim_oil_init(struct pim_instance *pim)
 						 pim_oil_equal, hash_name);
 
 	pim->channel_oil_list = list_new();
-	if (!pim->channel_oil_list) {
-		zlog_err("%s %s: failure: channel_oil_list=list_new()",
-			 __FILE__, __PRETTY_FUNCTION__);
-		return;
-	}
 	pim->channel_oil_list->del = (void (*)(void *))pim_channel_oil_free;
 	pim->channel_oil_list->cmp =
 		(int (*)(void *, void *))pim_channel_oil_compare;

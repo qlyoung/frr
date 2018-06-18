@@ -95,9 +95,4 @@ void pim_br_clear_pmbr(struct prefix_sg *sg)
 void pim_br_init(void)
 {
 	pim_br_list = list_new();
-	if (!pim_br_list) {
-		zlog_err("%s: Failure to create pim_br_list",
-			 __PRETTY_FUNCTION__);
-		return;
-	}
 }
