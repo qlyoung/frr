@@ -37,6 +37,7 @@
 #include "spf_backoff.h"
 #include "jhash.h"
 #include "skiplist.h"
+#include "lib_errors.h"
 
 #include "isis_constants.h"
 #include "isis_common.h"
@@ -418,7 +419,7 @@ static void isis_vertex_id_init(struct isis_vertex *vertex, void *id,
 		memcpy(&vertex->N.prefix, (struct prefix *)id,
 		       sizeof(struct prefix));
 	} else {
-		zlog_err("WTF!");
+		zlog_ferr(LIB_ERR_DEVELOPMENT, "Unknown Vertex Type");
 	}
 }
 
