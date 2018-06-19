@@ -125,12 +125,6 @@ static struct ferr_ref ferr_bgp_err[] = {
 		.suggestion = "Determine the sending peer and correct his invalid open packet"
 	},
 	{
-		.code = BGP_ERR_SOCKET,
-		.title = "Socket Error",
-		.description = "When attempting to access a socket a system error has occurred\nand we were unable to properly complete the request",
-		.suggestion = "Ensure that there are sufficient system resources available and\nensure that the frr user has sufficient permissions to work"
-	},
-	{
 		.code = BGP_ERR_SND_FAIL,
 		.title = "BGP error sending to peer",
 		.description = "BGP attempted to respond to open from a peer and failed",
@@ -182,12 +176,6 @@ static struct ferr_ref ferr_bgp_err[] = {
 		.title = "BGP error with nexthopo update",
 		.description = "BGP unable to process nexthop update",
 		.suggestion = "BGP received nexthop update but nexthop is not reachable in this bgp\ninstance. Report for troubleshooting"
-	},
-	{
-		.code = BGP_ERR_PRIVILEGES,
-		.title = "Failure to raise or lower privileges",
-		.description = "FRR attempted to raise or lower its privileges and was unable to do so",
-		.suggestion = "Ensure that you are running FRR as the frr user and that the user has\nSufficient privileges to properly access root privileges"
 	},
 	{
 		.code = BGP_ERR_LABEL,
@@ -290,6 +278,18 @@ static struct ferr_ref ferr_bgp_err[] = {
 		.title = "BGP EVPN AS and process name mismatch",
 		.description = "BGP configuration has AS and process name mismatch",
 		.suggestion = "Correct the configuration so that the BGP AS number and instance\nname are consistent"
+	},
+	{
+		.code = BGP_ERR_FLOWSPEC_PACKET,
+		.title = "BGP Flowspec packet processing error",
+		.description = "The BGP flowspec subsystem has detected a error in the send or receive of a packet",
+		.suggestion = "Gather log files from both sides of the peering relationship and open an issue"
+	},
+	{
+		.code = BGP_ERR_FLOWSPEC_INSTALLATION,
+		.title = "BGP Flowspec Installation/removal Error",
+		.description = "The BGP flowspec subsystem has detected that there was a failure for installation/removal/modification of Flowspec from the dataplane",
+		.suggestion = "Gather log files from the router and open an issue, Restart FRR"
 	},
 	{
 		.code = END_FERR,
