@@ -18,8 +18,7 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <zebra.h>
-#include <lib_errors.h>
+#include "lib_errors.h"
 
 /* clang-format off */
 static struct ferr_ref ferr_lib_err[] = {
