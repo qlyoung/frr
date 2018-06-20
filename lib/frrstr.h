@@ -130,6 +130,9 @@ char *zencrypt(const char *passwd);
  *
  * Implements a Caesar cipher. Printable ASCII in, printable ASCII out.
  *
+ * No spaces (0x20) allowed in plaintext, ciphertext or key. No spaces produced
+ * in output.
+ *
  * --------------------------------------------------------------------------
  * SUBSTITUTION CIPHERS OFFER NO SECURITY. DO NOT USE THIS IN SECURE SYSTEMS.
  * SUBSTITUTION CIPHERS OFFER NO SECURITY. DO NOT USE THIS IN SECURE SYSTEMS.
@@ -144,10 +147,10 @@ char *zencrypt(const char *passwd);
  *
  * text
  *    null-terminated input text; should be plaintext when encrypt = true,
- *    ciphertext when encrypt = false; must be printable ASCII
+ *    ciphertext when encrypt = false; must be printable ASCII without spaces
  *
  * key
- *    null terminated key; must be printable ASCII
+ *    null terminated key; must be printable ASCII without spaces
  *
  * Returns:
  *    `text`, encrypted or decrypted in-place.

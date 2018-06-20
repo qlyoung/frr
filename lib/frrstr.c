@@ -198,17 +198,17 @@ char *caesar(bool encrypt, char *text, const char *key)
         int16_t w[tl + 1];
 
         for (size_t i = 0; i < tl; ++i)
-                if (!(text[i] >= 32 && text[i] <= 126))
+                if (!(text[i] >= 33 && text[i] <= 126))
                         return NULL;
 
         for (size_t i = 0; i < kl; ++i)
-                if (!(key[i] >= 32 && key[i] <= 126))
+                if (!(key[i] >= 33 && key[i] <= 126))
                         return NULL;
 
         for (size_t i = 0; i < tl; ++i) {
                 w[i] = text[i];
-                w[i] += -32 + (2 * !!encrypt - 1) * key[i % kl];
-                w[i] = MOD((w[i]), (127 - 32)) + 32;
+                w[i] += -33 + (2 * !!encrypt - 1) * key[i % kl];
+                w[i] = MOD((w[i]), (127 - 33)) + 33;
         }
 
         for (size_t i = 0; i < tl; i++)
