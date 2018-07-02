@@ -30,9 +30,10 @@ From Source
 -----------
 
 Building FRR from source is the best way to ensure you have the latest features
-and bug fixes. Details for each supported platform, including dependency
-package listings, permissions, and other gotchas, are in the developer's
-documentation. This section provides a brief overview on the process.
+and bug fixes. Up-to-date details for each supported platform, including
+dependency package listings, permissions, and other gotchas, are in the
+developer's documentation. This section provides a brief overview on the
+process.
 
 Getting the Source
 ^^^^^^^^^^^^^^^^^^
@@ -197,6 +198,18 @@ options from the list below.
    With this option, we provide a way to strip out these characters for APK dev
    package builds.
 
+.. option:: --enable-protobuf
+
+   Enable support for protobuf transport. Requires installation of optional packages.
+
+.. option:: --enable-zeromq
+
+   Enable support for ZeroMQ transport. Requires installation of optional packages.
+
+.. option:: --enable-systemd
+
+   Enable systemd integrations. Requires installation of optional packages.
+
 .. option:: --enable-multipath=X
 
    Compile FRR with up to X way ECMP supported.  This number can be from 0-999.
@@ -280,14 +293,13 @@ FRR will run with any kernel configuration but some recommendations do exist.
    the Linux kernel and *zebra* (:ref:`kernel-interface`).
 
 :makevar:`CONFIG_RTNETLINK`
-   This makes it possible to receive Netlink routing messages.  If you specify
+   This makes it possible to receive Netlink routing messages. If you specify
    this option, *zebra* can detect routing information updates directly from
    the kernel (:ref:`kernel-interface`).
 
 :makevar:`CONFIG_IP_MULTICAST`
-   This option enables IP multicast and should be specified when you use *ripd*
-   (:ref:`rip`) or *ospfd* (:ref:`ospfv2`) because these protocols use
-   multicast.
+   This option enables IP multicast and should be specified when you use
+   :ref:`rip` or :ref:`ospfv2` because these protocols use multicast.
 
 Linux sysctl settings and kernel modules
 ````````````````````````````````````````
@@ -296,7 +308,7 @@ There are several kernel parameters that impact overall operation of FRR when
 using Linux as a router. Generally these parameters should be set in a
 sysctl related configuration file, e.g., :file:`/etc/sysctl.conf` on
 Ubuntu based systems and a new file
-:file:`/etc/sysctl.d/90-routing-sysctl.conf` on Centos based systems.
+:file:`/etc/sysctl.d/90-routing-sysctl.conf` on CentOS based systems.
 Additional kernel modules are also needed to support MPLS forwarding.
 
 :makevar:`IPv4 and IPv6 forwarding`
@@ -337,7 +349,7 @@ Additional kernel modules are also needed to support MPLS forwarding.
    appropriate value.
 
 :makevar:`VRF forwarding`
-   General information on Linux VRF support can be found in 
+   General information on Linux VRF support can be found in
    https://www.kernel.org/doc/Documentation/networking/vrf.txt. Kernel
    support for VRFs was introduced in 4.3 and improved upon through
    4.13, which is the version most used in FRR testing (as of June
@@ -365,15 +377,14 @@ Additional kernel modules are also needed to support MPLS forwarding.
    environments where VRFs are used to support multiple administrative
    groups.
 
-   **Important note** as of June 2018, Kernel versions 4.14-4.18 have a
-   known bug where VRF-specific TCP sockets are not properly handled. When
-   running these kernel versions, if unable to establish any VRF BGP
-   adjacencies, either downgrade to 4.13 or set
-   'net.ipv4.tcp_l3mdev_accept=1'. The fix for this issue is planned to be
-   included in future kernel versions so upgrading your kernel may also
-   address this issue.
+   .. note:: As of June 2018, kernel versions 4.14-4.18 have a known bug where
+   VRF-specific TCP sockets are not properly handled. When running these kernel
+   versions, if FRR is unable to establish any VRF BGP adjacencies, either
+   downgrade to 4.13 or set the sysctl 'net.ipv4.tcp_l3mdev_accept=1'. The fix
+   for this issue is planned to be included in future kernel versions so
+   upgrading your kernel may also address this issue.
 
-   
+
 Building
 ^^^^^^^^
 
