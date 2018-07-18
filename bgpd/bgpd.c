@@ -2695,62 +2695,6 @@ int peer_group_bind(struct bgp *bgp, union sockunion *su, struct peer *peer,
 	return 0;
 }
 
-int peer_group_unbind(struct bgp *bgp, struct peer *peer,
-		      struct peer_group *group)
-{
-	struct peer *other;
-	afi_t afi;
-	safi_t safi;
-
-	if (group != peer->group)
-		return BGP_ERR_PEER_GROUP_MISMATCH;
-
-	FOREACH_AFI_SAFI (afi, safi) {
-		if (peer->afc[afi][safi]) {
-			peer->afc[afi][safi] = 0;
-			peer_af_flag_reset(peer, afi, safi);
-
-			if (peer_af_delete(peer, afi, safi) != 0) {
-				zlog_ferr(
-					BGP_ERR_PEER_DELETE,
-					"couldn't delete af structure for peer %s",
-					peer->host);
-			}
-		}
-	}
-
-	assert(listnode_lookup(group->peer, peer));
-	peer_unlock(peer); /* peer group list reference */
-	listnode_delete(group->peer, peer);
-	peer->group = NULL;
-	other = peer->doppelganger;
-
-	if (group->conf->as) {
-		peer_delete(peer);
-		if (other && other->status != Deleted) {
-			if (other->group) {
-				peer_unlock(other);
-				listnode_delete(group->peer, other);
-			}
-			other->group = NULL;
-			peer_delete(other);
-		}
-		return 0;
-	}
-
-	bgp_bfd_deregister_peer(peer);
-	peer_global_config_reset(peer);
-
-	if (BGP_IS_VALID_STATE_FOR_NOTIF(peer->status)) {
-		peer->last_reset = PEER_DOWN_RMAP_UNBIND;
-		bgp_notify_send(peer, BGP_NOTIFY_CEASE,
-				BGP_NOTIFY_CEASE_CONFIG_CHANGE);
-	} else
-		bgp_session_reset(peer);
-
-	return 0;
-}
-
 static int bgp_startup_timer_expire(struct thread *thread)
 {
 	struct bgp *bgp;
