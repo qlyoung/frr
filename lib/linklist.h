@@ -43,7 +43,7 @@ struct list {
 	 * Returns -1 if val1 < val2, 0 if equal?, 1 if val1 > val2.
 	 * Used as definition of sorted for listnode_add_sort
 	 */
-	int (*cmp)(void *val1, void *val2);
+	enum ordering (*cmp)(void *val1, void *val2);
 
 	/* callback to free user-owned data when listnode is deleted. supplying
 	 * this callback is very much encouraged!
