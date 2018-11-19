@@ -143,6 +143,7 @@ include sharpd/subdir.am
 include pimd/subdir.am
 include pbrd/subdir.am
 include staticd/subdir.am
+include vrrpd/subdir.am
 include bfdd/subdir.am
 include yang/subdir.am
 include yang/libyang_plugins/subdir.am
@@ -216,6 +217,7 @@ EXTRA_DIST += \
 	staticd/Makefile \
 	tests/Makefile \
 	tools/Makefile \
+	vrrpd/Makefile
 	vtysh/Makefile \
 	watchfrr/Makefile \
 	zebra/Makefile \
