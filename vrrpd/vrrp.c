@@ -79,7 +79,7 @@ static void vrrp_update_times(struct vrrp_vrouter *vr,
 	vr->advertisement_interval = advertisement_interval;
 	vr->master_adver_interval = master_adver_interval;
 	vr->skew_time = ((256 - vr->priority) * master_adver_interval) / 256;
-	vr->master_down_interval = (3 * >master_adver_interval);
+	vr->master_down_interval = (3 * master_adver_interval);
 	vr->master_down_interval += vr->skew_time;
 }
 
