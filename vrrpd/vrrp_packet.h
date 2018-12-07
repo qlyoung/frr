@@ -30,8 +30,12 @@
  * Shared header for VRRPv2/v3 packets.
  */
 struct vrrp_hdr {
-	uint8_t version : 4;
-	uint8_t type : 4;
+	/*
+	 * H  L H  L
+	 * 0000 0000
+	 * ver  type
+	 */
+	uint8_t vertype;
 	uint8_t vrid;
 	uint8_t priority;
 	uint8_t naddr;
@@ -42,9 +46,13 @@ struct vrrp_hdr {
 			uint8_t adver_int;
 		} v2;
 		struct {
-			/* advertisement interval (in centiseconds) */
-			uint16_t rsvd : 4;
-			uint16_t adver_int : 12;
+			/*
+			 * advertisement interval (in centiseconds)
+			 * H  L H          L
+			 * 0000 000000000000
+			 * rsvd adver_int
+			 */
+			uint16_t adver_int;
 		} v3;
 	};
 	uint16_t chksum;
