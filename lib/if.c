@@ -390,6 +390,30 @@ struct interface *if_lookup_prefix(struct prefix *prefix, vrf_id_t vrf_id)
 	return NULL;
 }
 
+size_t if_lookup_by_hwaddr(const uint8_t *hw_addr, size_t addrsz,
+			   struct interface ***result, vrf_id_t vrf_id)
+{
+	struct vrf *vrf = vrf_lookup_by_id(vrf_id);
+
+	struct list *rs = list_new();
+	struct interface *ifp;
+
+	FOR_ALL_INTERFACES (vrf, ifp) {
+		if (ifp->hw_addr_len == (int)addrsz
+		    && !memcmp(hw_addr, ifp->hw_addr, addrsz))
+			listnode_add(rs, ifp);
+	}
+
+	if (list->count) {
+		*result = XCALLOC(MTYPE_TMP,
+				  sizeof(struct interface *) * rs->count);
+		list_to_array(rs, (void **)*result, rs->count);
+	}
+
+	return rs->count;
+}
+
+
 /* Get interface by name if given name interface doesn't exist create
    one. */
 struct interface *if_get_by_name(const char *name, vrf_id_t vrf_id)

@@ -67,6 +67,9 @@ struct vrrp_router {
 	/* Socket */
 	int sock;
 
+	/* macvlan interface */
+	struct interface *ifp_mvl;
+
 	/* Socket read buffer */
 	uint8_t ibuf[IP_MAXPACKET];
 

@@ -183,6 +183,22 @@ static struct vrrp_router *vrrp_router_create(struct vrrp_vrouter *vr,
 	r->fsm.state = VRRP_STATE_INITIALIZE;
 	vrrp_mac_set(&r->vmac, family == AF_INET6, vr->vrid);
 
+	/* Search for existing interface with computed MAC address */
+	struct interface **ifps;
+	size_t ifps_cnt = if_lookup_by_hwaddr(
+		r->vmac.octet, sizeof(r->vmac.octet), &ifps, VRF_DEFAULT);
+	for (unsigned int i = 0; i < ifps_cnt; i++) {
+		fprintf(stderr, "%s", ifps[i]->name);
+	}
+
+	/* FIXME: verify that found interface is the child of configured interface */
+	/* ... */
+
+	/* set macvlan interface */
+	if (ifp_cnt) {
+		r->ifp_mvl = ifps[0];
+	}
+
 	return r;
 }
 
