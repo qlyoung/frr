@@ -51,19 +51,15 @@ extern struct thread_master *master;
 extern struct zebra_privs_t vrrp_privs;
 
 /* Global hash of all Virtual Routers */
-struct hash *vrrp_vrouters_hash;
+extern struct hash *vrrp_vrouters_hash;
 
-/* Whether to automatically configure VRRP instances */
-static bool vrrp_autoconfig_on;
-static int vrrp_autoconfig_version;
-
-	/*
-	 * VRRP Router.
-	 *
-	 * This struct contains all state for a particular VRRP Router operating
-	 * in a Virtual Router for either IPv4 or IPv6.
-	 */
-	struct vrrp_router {
+/*
+ * VRRP Router.
+ *
+ * This struct contains all state for a particular VRRP Router operating
+ * in a Virtual Router for either IPv4 or IPv6.
+ */
+struct vrrp_router {
 	/*
 	 * Whether this VRRP Router is active.
 	 */
@@ -421,8 +417,7 @@ DECLARE_HOOK(vrrp_change_state_hook, (struct vrrp_router * r, int to), (r, to));
  */
 int vrrp_event(struct vrrp_router *r, int event);
 
-
-/* Other ------------------------------------------------------------------- */
+/* Autoconfig -------------------------------------------------------------- */
 
 /*
  * Search for and automatically configure VRRP instances on interfaces.
@@ -439,7 +434,25 @@ int vrrp_event(struct vrrp_router *r, int event);
  *    -1 on failure
  *     0 otherwise
  */
-int vrrp_autoconfig(struct interface *ifp);
+int vrrp_autoconfig(void);
+
+void vrrp_autoconfig_on(int version);
+
+void vrrp_autoconfig_off(void);
+
+int vrrp_autoconfig_if_add(struct interface *ifp);
+
+int vrrp_autoconfig_if_del(struct interface *ifp);
+
+int vrrp_autoconfig_if_up(struct interface *ifp);
+
+int vrrp_autoconfig_if_down(struct interface *ifp);
+
+int vrrp_autoconfig_if_address_add(struct interface *ifp);
+
+int vrrp_autoconfig_if_address_del(struct interface *ifp);
+
+/* Other ------------------------------------------------------------------- */
 
 /*
  * Find VRRP Virtual Router by Virtual Router ID
