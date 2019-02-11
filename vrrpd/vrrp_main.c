@@ -37,6 +37,7 @@
 #include "vrrp.h"
 #include "vrrp_vty.h"
 #include "vrrp_zebra.h"
+#include "vrrp_packet.h"
 
 char backup_config_file[256];
 
@@ -56,7 +57,11 @@ struct zebra_privs_t vrrp_privs = {
 	.cap_num_p = array_size(_caps_p),
 	.cap_num_i = 0};
 
-struct option longopts[] = { { 0 } };
+static const struct option longopts[] = {
+	{"fuzz", required_argument, NULL, 'x'},
+	{0},
+};
+
 
 /* Master of threads. */
 struct thread_master *master;
@@ -112,7 +117,9 @@ FRR_DAEMON_INFO(vrrpd, VRRP, .vty_port = VRRP_VTY_PORT,
 int main(int argc, char **argv, char **envp)
 {
 	frr_preinit(&vrrpd_di, argc, argv);
-	frr_opt_add("", longopts, "");
+	frr_opt_add("x:", longopts, "  -x, --fuzz    Fuzz packet from file");
+	bool vrrp_fuzz_on = false;
+	char *nuts;
 
 	while (1) {
 		int opt;
@@ -125,6 +132,11 @@ int main(int argc, char **argv, char **envp)
 		switch (opt) {
 		case 0:
 			break;
+		case 'x':
+			vrrp_fuzz_on = true;
+			vrrp_disable_checksum = true;
+			nuts = optarg;
+			break;
 		default:
 			frr_help_exit(1);
 			break;
@@ -136,6 +148,9 @@ int main(int argc, char **argv, char **envp)
 	vrrp_zebra_init();
 	vrrp_vty_init();
 	vrrp_init();
+
+	if (vrrp_fuzz_on)
+		return vrrp_fuzz(2, AF_INET, nuts);
 
 	snprintf(backup_config_file, sizeof(backup_config_file),
 		 "%s/vrrpd.conf", frr_sysconfdir);

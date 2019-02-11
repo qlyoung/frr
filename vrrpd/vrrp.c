@@ -332,6 +332,7 @@ static bool vrrp_attach_interface(struct vrrp_router *r)
 }
 
 static struct vrrp_router *vrrp_router_create(struct vrrp_vrouter *vr,
+					      uint8_t priority, uint8_t vrid,
 					      int family)
 {
 	struct vrrp_router *r =
@@ -343,9 +344,9 @@ static struct vrrp_router *vrrp_router_create(struct vrrp_vrouter *vr,
 	r->vr = vr;
 	r->addrs = list_new();
 	r->addrs->del = vrrp_router_addr_list_del_cb;
-	r->priority = vr->priority;
+	r->priority = priority;
 	r->fsm.state = VRRP_STATE_INITIALIZE;
-	vrrp_mac_set(&r->vmac, family == AF_INET6, vr->vrid);
+	vrrp_mac_set(&r->vmac, family == AF_INET6, vrid);
 
 	vrrp_attach_interface(r);
 
@@ -386,8 +387,8 @@ struct vrrp_vrouter *vrrp_vrouter_create(struct interface *ifp, uint8_t vrid,
 	vr->preempt_mode = true;
 	vr->accept_mode = false;
 
-	vr->v4 = vrrp_router_create(vr, AF_INET);
-	vr->v6 = vrrp_router_create(vr, AF_INET6);
+	vr->v4 = vrrp_router_create(vr, vr->priority, vr->vrid, AF_INET);
+	vr->v6 = vrrp_router_create(vr, vr->priority, vr->vrid, AF_INET6);
 
 	vrrp_set_advertisement_interval(vr, VRRP_DEFAULT_ADVINT);
 
@@ -1337,6 +1338,152 @@ static void vrrp_autoconfig_autoaddrupdate(struct vrrp_vrouter *vr)
 	if (vr->v6->addrs->count == 0
 	    && vr->v6->fsm.state != VRRP_STATE_INITIALIZE)
 		vrrp_event(vr->v4, VRRP_EVENT_SHUTDOWN);
+}
+
+int vrrp_fuzz(int version, int af, char *fname)
+{
+	zlog_set_level(ZLOG_DEST_MONITOR, LOG_DEBUG);
+
+	char *buf;
+	size_t bufsiz;
+
+	vrrp_privs.change(ZPRIVS_RAISE);
+	{
+		FILE *f = fopen(fname, "rb");
+		fseek(f, 0, SEEK_END);
+		long fsize = ftell(f);
+		fseek(f, 0, SEEK_SET);
+
+		buf = malloc(fsize + 1);
+		bufsiz = fread(buf, 1, fsize, f);
+
+		fclose(f);
+
+		if (bufsiz == 0) {
+
+		}
+	}
+	vrrp_privs.change(ZPRIVS_LOWER);
+
+	struct vrrp_vrouter vr = {
+		.version = version,
+		.vrid = 1,
+	};
+	struct vrrp_router *r = vrrp_router_create(&vr, 100, 1, af);
+
+	bool failed = false;
+	int ret = 0;
+
+	/* Create sockets */
+	vrrp_privs.change(ZPRIVS_RAISE);
+	{
+		r->sock_rx = socket(r->family, SOCK_RAW, IPPROTO_VRRP);
+		r->sock_tx = socket(r->family, SOCK_RAW, IPPROTO_VRRP);
+	}
+	vrrp_privs.change(ZPRIVS_LOWER);
+
+	if (r->sock_rx < 0 || r->sock_tx < 0) {
+		fprintf(stderr, "Can't create %s VRRP Rx socket",
+			family2str(r->family));
+		failed = true;
+		goto done;
+	}
+
+	/* Configure sockets */
+	if (r->family == AF_INET) {
+
+		struct in_addr v4;
+		v4.s_addr = INADDR_ANY;
+		/* Join Rx socket to VRRP IPv4 multicast group */
+		ret = setsockopt_ipv4_multicast(r->sock_rx, IP_ADD_MEMBERSHIP,
+						v4, htonl(VRRP_MCASTV4_GROUP),
+						0);
+		if (ret < 0) {
+			fprintf(stderr,
+				"Failed to join VRRP %s multicast group",
+				family2str(r->family));
+			failed = true;
+			goto done;
+		}
+
+		/* Set outgoing TTL - this causes us to skip over TTL check but
+		 * must be done to get any fuzzing depth */
+		int ttl = 255;
+		ret = setsockopt(r->sock_tx, IPPROTO_IP, IP_MULTICAST_TTL, &ttl,
+				 sizeof(ttl));
+	} else if (r->family == AF_INET6) {
+		/* Request hop limit delivery */
+		setsockopt_ipv6_hoplimit(r->sock_rx, 1);
+		if (ret < 0) {
+			zlog_warn(VRRP_LOGPFX VRRP_LOGPFX_VRID
+				  "Failed to request IPv6 Hop Limit delivery",
+				  r->vr->vrid);
+			failed = true;
+			goto done;
+		}
+
+		/* Join VRRP IPv6 multicast group */
+		struct ipv6_mreq mreq;
+		inet_pton(AF_INET6, VRRP_MCASTV6_GROUP_STR,
+			  &mreq.ipv6mr_multiaddr);
+		mreq.ipv6mr_interface = 0;
+		ret = setsockopt(r->sock_rx, IPPROTO_IPV6, IPV6_JOIN_GROUP,
+				 &mreq, sizeof(mreq));
+		if (ret < 0) {
+			fprintf(stderr,
+				"Failed to join VRRP %s multicast group",
+				family2str(r->family));
+			failed = true;
+			goto done;
+		}
+	}
+
+	/* set fsm state */
+	r->fsm.state = VRRP_STATE_MASTER;
+
+	/* send packet */
+	union sockunion dest;
+	const char *group =
+		r->family == AF_INET ? VRRP_MCASTV4_GROUP_STR : VRRP_MCASTV6_GROUP_STR;
+	str2sockunion(group, &dest);
+
+	zlog_hexdump(buf, bufsiz);
+
+	ssize_t sent = sendto(r->sock_tx, buf, bufsiz, 0, &dest.sa,
+			      sockunion_sizeof(&dest));
+
+	fprintf(stderr, "Sent %zd bytes\n", sent);
+
+	/* now schedule read */
+	struct pollfd fds[1];
+        int timeout_msecs = 1000;
+
+	/* Open STREAMS device. */
+	fds[0].fd = r->sock_rx;
+	fds[0].events = POLLIN;
+	fds[0].revents = 0;
+
+	poll(fds, 1, timeout_msecs);
+
+	if (fds[0].revents | POLLIN) {
+		struct thread t;
+		t.arg = r;
+		vrrp_read(&t);
+	}
+
+done:
+	ret = 0;
+	if (failed) {
+		fprintf(stderr, "Failed to initialize VRRP %s router",
+			family2str(r->family));
+		if (r->sock_rx >= 0)
+			close(r->sock_rx);
+		if (r->sock_tx >= 0)
+			close(r->sock_tx);
+		ret = -1;
+	}
+
+	return ret;
 }
 
 static struct vrrp_vrouter *

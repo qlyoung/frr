@@ -30,6 +30,8 @@
 #include "vrrp_memory.h"
 #include "vrrp_packet.h"
 
+bool vrrp_disable_checksum;
+
 /* clang-format off */
 const char *vrrp_packet_names[16] = {
 	[0] = "Unknown",
@@ -271,10 +273,13 @@ ssize_t vrrp_pkt_parse_datagram(int family, int version, struct msghdr *m,
 	VRRP_PKT_VCHECK(pktver == version, "Bad version %u", pktver);
 
 	/* Checksum check */
-	uint16_t chksum = vrrp_pkt_checksum(*pkt, pktsize, src);
-	VRRP_PKT_VCHECK((*pkt)->hdr.chksum == chksum,
-			"Bad VRRP checksum %" PRIx16 "; should be %" PRIx16 "",
-			(*pkt)->hdr.chksum, chksum);
+	if (!vrrp_disable_checksum) {
+		uint16_t chksum = vrrp_pkt_checksum(*pkt, pktsize, src);
+		VRRP_PKT_VCHECK((*pkt)->hdr.chksum == chksum,
+				"Bad VRRP checksum %" PRIx16
+				"; should be %" PRIx16 "",
+				(*pkt)->hdr.chksum, chksum);
+	}
 
 	/* Type check */
 	VRRP_PKT_VCHECK(((*pkt)->hdr.vertype & 0x0F) == 1, "Bad type %" PRIu8,

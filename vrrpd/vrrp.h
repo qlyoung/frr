@@ -459,4 +459,9 @@ int vrrp_autoconfig_if_address_del(struct interface *ifp);
  */
 struct vrrp_vrouter *vrrp_lookup(struct interface *ifp, uint8_t vrid);
 
+/*
+ * Fuzz VRRP
+ */
+int vrrp_fuzz(int version, int af, char *fname);
+
 #endif /* __VRRP_H__ */
