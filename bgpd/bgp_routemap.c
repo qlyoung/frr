@@ -342,9 +342,9 @@ route_match_command(void *rule, const struct prefix *prefix,
 	int status = RMAP_NOMATCH;
 	u_int32_t locpref = 0;
 	u_int32_t newlocpref = 0;
-	enum lua_rm_status lrm_status;
+	enum frrlua_rm_status lrm_status;
 	struct bgp_path_info *path = (struct bgp_path_info *)object;
-	lua_State *L = lua_initialize("/etc/frr/lua.scr");
+	lua_State *L = frrlua_initialize("/etc/frr/lua.scr");
 
 	if (L == NULL)
 		return status;
@@ -352,9 +352,7 @@ route_match_command(void *rule, const struct prefix *prefix,
 	/*
 	 * Setup the prefix information to pass in
 	 */
-	lua_setup_prefix_table(L, prefix);
-
-	zlog_debug("Set up prefix table");
+	frrlua_newtable_prefix(L, prefix);
 	/*
 	 * Setup the bgp_path_info information
 	 */
@@ -374,7 +372,7 @@ route_match_command(void *rule, const struct prefix *prefix,
 	/*
 	 * Run the rule
 	 */
-	lrm_status = lua_run_rm_rule(L, rule);
+	lrm_status = frrlua_run_rm_rule(L, rule);
 	switch (lrm_status) {
 	case LUA_RM_FAILURE:
 		zlog_debug("RM_FAILURE");
@@ -385,13 +383,13 @@ route_match_command(void *rule, const struct prefix *prefix,
 	case LUA_RM_MATCH_AND_CHANGE:
 		zlog_debug("MATCH AND CHANGE");
 		lua_getglobal(L, "nexthop");
-		path->attr->med = get_integer(L, "metric");
+		path->attr->med = frrlua_table_get_integer(L, "metric");
 		/*
 		 * This needs to be abstraced with the set function
 		 */
 		if (path->attr->flag & ATTR_FLAG_BIT(BGP_ATTR_LOCAL_PREF))
 			locpref = path->attr->local_pref;
-		newlocpref = get_integer(L, "localpref");
+		newlocpref = frrlua_table_get_integer(L, "localpref");
 		if (newlocpref != locpref) {
 			path->attr->flag |= ATTR_FLAG_BIT(BGP_ATTR_LOCAL_PREF);
 			path->attr->local_pref = newlocpref;
