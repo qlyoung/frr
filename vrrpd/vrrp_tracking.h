@@ -24,5 +24,8 @@
 
 #include "lib/if.h"
 
+extern char script[MAXPATHLEN];
+
+void vrrp_tracking_init(void);
 
 #endif /* __VRRP_TRACKING_H__ */
