@@ -40,7 +40,7 @@ static int lua_zlog_debug(lua_State *L)
 	return 0;
 }
 
-const char *get_string(lua_State *L, const char *key)
+const char *frrlua_table_get_string(lua_State *L, const char *key)
 {
 	const char *str;
 
@@ -53,7 +53,7 @@ const char *get_string(lua_State *L, const char *key)
 	return str;
 }
 
-int get_integer(lua_State *L, const char *key)
+int frrlua_table_get_integer(lua_State *L, const char *key)
 {
 	int result;
 
@@ -66,7 +66,7 @@ int get_integer(lua_State *L, const char *key)
 	return result;
 }
 
-static void *lua_alloc(void *ud, void *ptr, size_t osize,
+static void *frrlua_alloc(void *ud, void *ptr, size_t osize,
 		       size_t nsize)
 {
 	(void)ud;  (void)osize;  /* not used */
@@ -77,22 +77,24 @@ static void *lua_alloc(void *ud, void *ptr, size_t osize,
 		return realloc(ptr, nsize);
 }
 
-lua_State *lua_initialize(const char *file)
+lua_State *frrlua_initialize(const char *file)
 {
 	int status;
-	lua_State *L = lua_newstate(lua_alloc, NULL);
+	lua_State *L = lua_newstate(frrlua_alloc, NULL);
 
 	zlog_debug("Newstate: %p", L);
 	luaL_openlibs(L);
 	zlog_debug("Opened lib");
-	status = luaL_loadfile(L, file);
-	if (status) {
-		zlog_debug("Failure to open %s %d", file, status);
-		lua_close(L);
-		return NULL;
+	if (file) {
+		status = luaL_loadfile(L, file);
+		if (status) {
+			zlog_debug("Failure to open %s %d", file, status);
+			lua_close(L);
+			return NULL;
+		}
+		lua_pcall(L, 0, LUA_MULTRET, 0);
 	}
 
-	lua_pcall(L, 0, LUA_MULTRET, 0);
 	zlog_debug("Setting global function");
 	lua_pushcfunction(L, lua_zlog_debug);
 	lua_setglobal(L, "zlog_debug");
@@ -100,9 +102,11 @@ lua_State *lua_initialize(const char *file)
 	return L;
 }
 
-void lua_setup_prefix_table(lua_State *L, const struct prefix *prefix)
+void frrlua_newtable_prefix(lua_State *L, const struct prefix *prefix)
 {
 	char buffer[100];
+
+	zlog_debug("frrlua: pushing prefix table");
 
 	lua_newtable(L);
 	lua_pushstring(L, prefix2str(prefix, buffer, 100));
@@ -112,7 +116,7 @@ void lua_setup_prefix_table(lua_State *L, const struct prefix *prefix)
 	lua_setglobal(L, "prefix");
 }
 
-enum lua_rm_status lua_run_rm_rule(lua_State *L, const char *rule)
+enum frrlua_rm_status frrlua_run_rm_rule(lua_State *L, const char *rule)
 {
 	int status;
 
