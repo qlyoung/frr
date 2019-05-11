@@ -38,6 +38,7 @@
 #include "vrrp_debug.h"
 #include "vrrp_vty.h"
 #include "vrrp_zebra.h"
+#include "vrrp_tracking.h"
 
 char backup_config_file[256];
 
@@ -121,7 +122,7 @@ FRR_DAEMON_INFO(vrrpd, VRRP, .vty_port = VRRP_VTY_PORT,
 int main(int argc, char **argv, char **envp)
 {
 	frr_preinit(&vrrpd_di, argc, argv);
-	frr_opt_add("", longopts, "");
+	frr_opt_add("x:", longopts, "  -x      Execute Lua script");
 
 	while (1) {
 		int opt;
@@ -134,6 +135,9 @@ int main(int argc, char **argv, char **envp)
 		switch (opt) {
 		case 0:
 			break;
+		case 'x':
+			strlcpy(script, optarg, sizeof(script));
+			break;
 		default:
 			frr_help_exit(1);
 			break;
@@ -145,6 +149,7 @@ int main(int argc, char **argv, char **envp)
 	vrrp_debug_init();
 	vrrp_zebra_init();
 	vrrp_vty_init();
+	vrrp_tracking_init();
 	vrrp_init();
 
 	snprintf(backup_config_file, sizeof(backup_config_file),
