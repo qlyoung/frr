@@ -345,6 +345,21 @@ DEFPY(vrrp_default,
 	return CMD_SUCCESS;
 }
 
+/*
+DEFPY(vrrp_track,
+      vrrp_track_cmd,
+      "[no] vrrp (1-255)$vrid track <interface IFNAME> action <SCRIPT$script|state backup$backup|priority-offset (-255-255)$offset|priority-set (1-254)$prio>",
+      NO_STR
+      VRRP_STR
+      "Configure object tracking\n"
+      "Track interface state\n")
+{
+	vrrp_track_interface(ifname);
+
+	return CMD_SUCCESS;
+}
+*/
+
 /* clang-format on */
 
 /*
