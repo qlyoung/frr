@@ -22,10 +22,38 @@
 
 #include <zebra.h>
 
+#include "vrrp.h"
 #include "lib/if.h"
 
-extern char script[MAXPATHLEN];
+/* Prototype obj tracking types --------------------------------------------- */
 
-void vrrp_tracking_init(void);
+enum tracked_object_type {
+	TRACKED_INTERFACE,
+	TRACKED_ROUTE,
+	TRACKED_IPSLA,
+};
+
+enum tracked_object_state {
+	OBJ_DOWN,
+	OBJ_UP
+};
+
+struct tracked_object {
+	int id;
+	enum tracked_object_type type;
+	enum tracked_object_state state;
+};
+
+/* VRRP tracking ------------------------------------------------------------ */
+
+enum vrrp_tracking_actiontype {
+	VRRP_TRACKING_ACTION_DECREMENT,
+	VRRP_TRACKING_ACTION_SCRIPT,
+};
+
+void vrrp_tracking_init(char *script);
+void vrrp_track_object(struct vrrp_vrouter *vr, struct tracked_object *obj,
+		       enum vrrp_tracking_actiontype type, const void *actionarg);
+void vrrp_tracking_event(struct tracked_object *obj);
 
 #endif /* __VRRP_TRACKING_H__ */

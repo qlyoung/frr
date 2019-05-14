@@ -84,10 +84,10 @@ lua_State *frrlua_initialize(const char *file)
 	zlog_debug("Newstate: %p", L);
 	luaL_openlibs(L);
 	zlog_debug("Opened lib");
-	if (file) {
+	if (file && strlen(file) > 0) {
 		status = luaL_loadfile(L, file);
 		if (status) {
-			zlog_debug("Failure to open %s %d", file, status);
+			zlog_debug("Failure to open %s: %d", file, status);
 			lua_close(L);
 			return NULL;
 		}
