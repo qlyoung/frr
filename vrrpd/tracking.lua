@@ -1,24 +1,23 @@
--- Builtin object tracking handlers for VRRP
+-- Custom object tracking handler for VRRP
 --
--- All functions receive two arguments:
--- <name>: the tracked object
---     vr: the virtual router tracking obj
+-- Available objects:
+--    obj: the tracked object
+--     vr: the virtual router tracking the object
+--
+-- Available data:
+--    OBJ_UP   - object is in UP state
+--    OBJ_DOWN - object is in DOWN state
 
-function vrrp_ot_interface (vr, interface)
-	if interface.flags & IFF_DOWN then
-		vr:set_priority(10)
-	elseif interface.flags & IFF_UP then
-		vr:set_priority(110)
-	end
+if (obj.state == OBJ_DOWN) then
+	vr:set_priority(vr.priority - 1)
+else
+	vr:set_priority(100)
 end
 
-function vrrp_ot_ipsla (vr)
+--[[
+if (obj.state == OBJ_UP) then
+	vr:set_priority(vr.priority + 40)
+elseif obj.state == OBJ_DOWN then
+	vr:set_priority(vr.priority - 10)
 end
-
-function vrrp_ot_route (vr, route)
-	if not route.reachable then
-		vr:set_priority(10)
-	elseif route.reachable then
-		vr:set_priority(110)
-	end
-end
+--]]

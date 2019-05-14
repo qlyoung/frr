@@ -30,6 +30,7 @@
 #include "vrrp.h"
 #include "vrrp_debug.h"
 #include "vrrp_memory.h"
+#include "vrrp_tracking.h"
 #include "vrrp_vty.h"
 #ifndef VTYSH_EXTRACT_PL
 #include "vrrpd/vrrp_vty_clippy.c"
@@ -345,20 +346,79 @@ DEFPY(vrrp_default,
 	return CMD_SUCCESS;
 }
 
-/*
 DEFPY(vrrp_track,
       vrrp_track_cmd,
-      "[no] vrrp (1-255)$vrid track <interface IFNAME> action <SCRIPT$script|state backup$backup|priority-offset (-255-255)$offset|priority-set (1-254)$prio>",
+      "[no] vrrp (1-255)$vrid track (1-4096)$objid <decrement (1-254)$dec|call LUASCRIPT>",
       NO_STR
       VRRP_STR
+      VRRP_VRID_STR
       "Configure object tracking\n"
-      "Track interface state\n")
+      "Object ID to track\n"
+      "Decrement router priority when object is down\n"
+      "Amount to decrement priority\n"
+      "Call Lua script to handle tracking events\n"
+      "Lua script to call")
 {
-	vrrp_track_interface(ifname);
+	VTY_DECLVAR_CONTEXT(interface, ifp);
+
+	struct vrrp_vrouter *vr;
+
+	VROUTER_GET_VTY(vty, ifp, vrid, vr);
+
+	struct tracked_object obj = {
+		.id = objid,
+		.type = TRACKED_INTERFACE,
+		.state = OBJ_UP,
+	};
+
+	enum vrrp_tracking_actiontype actiontype = 0;
+	const void *actionarg = NULL;
+
+	if (dec > 0) {
+		actiontype = VRRP_TRACKING_ACTION_DECREMENT;
+		actionarg = &dec;
+	}
+	else if (luascript) {
+		actiontype = VRRP_TRACKING_ACTION_SCRIPT;
+		actionarg = luascript;
+	}
+
+	vrrp_track_object(vr, &obj, actiontype, actionarg);
 
 	return CMD_SUCCESS;
 }
-*/
+
+DEFPY(vrrp_track_event,
+      vrrp_track_event_cmd,
+      "[no] vrrp (1-255)$vrid track (1-4096)$objid event <down|up>$ev",
+      NO_STR
+      VRRP_STR
+      VRRP_VRID_STR
+      "Configure object tracking\n"
+      "Object ID to track\n"
+      "Simulate event\n"
+      "Simulate down event\n"
+      "Simulate up event\n")
+{
+	VTY_DECLVAR_CONTEXT(interface, ifp);
+
+	struct vrrp_vrouter *vr;
+
+	VROUTER_GET_VTY(vty, ifp, vrid, vr);
+
+	enum tracked_object_state state = strmatch(ev, "down") ? OBJ_DOWN
+							       : OBJ_UP;
+
+	struct tracked_object obj = {
+		.id = objid,
+		.type = TRACKED_INTERFACE,
+		.state = state,
+	};
+
+	vrrp_tracking_event(&obj);
+
+	return CMD_SUCCESS;
+}
 
 /* clang-format on */
 
@@ -763,4 +823,6 @@ void vrrp_vty_init(void)
 	install_element(INTERFACE_NODE, &vrrp_ip_cmd);
 	install_element(INTERFACE_NODE, &vrrp_ip6_cmd);
 	install_element(INTERFACE_NODE, &vrrp_preempt_cmd);
+	install_element(INTERFACE_NODE, &vrrp_track_cmd);
+	install_element(INTERFACE_NODE, &vrrp_track_event_cmd);
 }

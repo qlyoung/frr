@@ -124,6 +124,8 @@ int main(int argc, char **argv, char **envp)
 	frr_preinit(&vrrpd_di, argc, argv);
 	frr_opt_add("x:", longopts, "  -x      Execute Lua script");
 
+	char script[MAXPATHLEN] = {};
+
 	while (1) {
 		int opt;
 
@@ -149,7 +151,7 @@ int main(int argc, char **argv, char **envp)
 	vrrp_debug_init();
 	vrrp_zebra_init();
 	vrrp_vty_init();
-	vrrp_tracking_init();
+	vrrp_tracking_init(script);
 	vrrp_init();
 
 	snprintf(backup_config_file, sizeof(backup_config_file),
