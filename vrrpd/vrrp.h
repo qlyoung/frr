@@ -256,6 +256,8 @@ struct vrrp_vrouter {
 	 */
 	bool accept_mode;
 
+	struct vrrp_tracking *tracking;
+
 	struct vrrp_router *v4;
 	struct vrrp_router *v6;
 };
@@ -539,6 +541,14 @@ void vrrp_if_address_add(struct interface *ifp);
 void vrrp_if_address_del(struct interface *ifp);
 
 /* Other ------------------------------------------------------------------- */
+
+/*
+ * Compute a key suitable for use with a hash table for the given vrrp_vrouter.
+ *
+ * arg
+ *    struct vrrp_vrouter * to the vrouter to hash
+ */
+unsigned int vrrp_hash_key(const void *arg);
 
 /*
  * Write interface block-level configuration to vty.

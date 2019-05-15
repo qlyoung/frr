@@ -55,6 +55,11 @@ enum frrlua_rm_status {
 };
 
 /*
+ * Allocator function for Lua API functions that need one.
+ */
+void *frrlua_alloc(void *ud, void *ptr, size_t osize, size_t nsize);
+
+/*
  * Creates a new Lua state, loads all libraries, and if a script is provided,
  * runs it.
  *
