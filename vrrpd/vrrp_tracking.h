@@ -57,10 +57,51 @@ enum vrrp_tracking_actiontype {
 	VRRP_TRACKING_ACTION_SCRIPT,
 };
 
+/*
+ * Initialize object tracking subsystem.
+ *
+ * Creates a Lua state and static datastructures. If provided, the given script
+ * is loaded into the Lua environment.
+ *
+ * script
+ *    Script to use when initializing the Lua state.
+ */
 void vrrp_tracking_init(char *script);
+
+/*
+ * Make a virtual router track an object.
+ *
+ * vr
+ *    Virtual router
+ *
+ * obj
+ *    Object that vr should track
+ *
+ * action
+ *    Either a Lua chunk defining the function 'vrrp_tracking_update'.
+ */
 void vrrp_track_object(struct vrrp_vrouter *vr, struct tracked_object *obj,
 		       enum vrrp_tracking_actiontype type, const void *actionarg);
+
+/*
+ * Make a virtual router stop tracking an object.
+ *
+ * vr
+ *    Virtual router
+ *
+ * obj
+ *    Object to track
+ */
 void vrrp_untrack_object(struct vrrp_vrouter *vr, struct tracked_object *obj);
+
+/*
+ * Event handler for object tracking. Call this function with the object that
+ * has changed. The tracking actions for any virtual routers tracking this
+ * object will be called.
+ *
+ * obj
+ *    Object which changed tracking state
+ */
 void vrrp_tracking_event(struct tracked_object *obj);
 
 #endif /* __VRRP_TRACKING_H__ */

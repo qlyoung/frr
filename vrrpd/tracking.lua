@@ -9,15 +9,7 @@
 --    OBJ_DOWN - object is in DOWN state
 
 if (obj.state == OBJ_DOWN) then
-	vr:set_priority(vr.priority - 1)
+	vr:set_priority(vr.priority - 7)
 else
 	vr:set_priority(100)
 end
-
---[[
-if (obj.state == OBJ_UP) then
-	vr:set_priority(vr.priority + 40)
-elseif obj.state == OBJ_DOWN then
-	vr:set_priority(vr.priority - 10)
-end
---]]
