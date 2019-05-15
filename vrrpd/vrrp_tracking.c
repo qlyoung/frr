@@ -60,12 +60,16 @@ static void objtrack_lua_pushtrackedobject(lua_State *L, const struct tracked_ob
 
 }
 
-/* Stuff -------------------------------------------------------------------- */
+/* Lua VRRP object methods ------------------------------------------------- */
 
 /*
- * Called from Lua to set priority of a VRRP instance.
+ * Set priority of a VRRP instance.
+ *
+ * Argument stack:
+ *    2 | priority
+ *    1 | struct vrrp_router *
  */
-static int vrrp_ot_vr_set_priority(lua_State *L)
+static int vrrp_tracking_vr_set_priority(lua_State *L)
 {
 	zlog_err("%s called with %d arguments", __func__, lua_gettop(L));
 
@@ -80,27 +84,25 @@ static int vrrp_ot_vr_set_priority(lua_State *L)
 }
 
 /*
- * Called from Lua to set protocol state of a VRRP instance.
- */
-static int vrrp_ot_vr_set_state(lua_State *L)
-{
-	zlog_err("%s called", __func__);
-
-	return 0;
-}
-
-/*
- * The metatable for VRRP instances that we pass to the Lua handlers.
+ * Functions to be installed in vrouter metatable.
  */
 static const luaL_Reg vr_funcs[] = {
-	{"set_priority", vrrp_ot_vr_set_priority},
-	{"set_state", vrrp_ot_vr_set_state},
+	{"set_priority", vrrp_tracking_vr_set_priority},
 	{},
 };
 
 /*
  * Compute a unique key to use for storing any and all data related to the
  * vrouter in the registry.
+ *
+ * vr
+ *    Virtual router to compute key for
+ *
+ * buf
+ *    Buffer to store the key in
+ *
+ * buflen
+ *    Size of buf
  */
 static void vrrp_vrouter_regkey(const struct vrrp_vrouter *vr, char *buf,
 				size_t buflen)
@@ -109,14 +111,19 @@ static void vrrp_vrouter_regkey(const struct vrrp_vrouter *vr, char *buf,
 }
 
 /*
- * Push a VRRP router as a userdata containing a pointer to the actual struct
- * vrrp_vrouter, which has the following attributes and functions:
+ * Create a userdata containing a pointer to a virtual router. The userdata's
+ * metatable is then populated with various attrbutes and methods. These
+ * attributes are copied from the struct; changing them in Lua will not change
+ * the underlying values. The methods call back into C functions.
  *
- * vr.priority
- * vr.vrid
- * vr.iface
- * vr.version
- * vr:set_priority(int priority)
+ * Suppose 'vr' is the name of the pushed userdata within Lua. This object will
+ * have the following attributes and functions:
+ *
+ *    vr.priority
+ *    vr.vrid
+ *    vr.iface
+ *    vr.version
+ *    vr:set_priority(int priority)
  */
 static void vrrp_lua_pushvrouter(lua_State *L, const struct vrrp_vrouter *vr)
 {
@@ -124,7 +131,8 @@ static void vrrp_lua_pushvrouter(lua_State *L, const struct vrrp_vrouter *vr)
 
 	char key[IFNAMSIZ + 64];
 
-	snprintf(key, sizeof(key), "vr-metatable-%s@%" PRIu8, vr->ifp->name, vr->vrid);
+	snprintf(key, sizeof(key), "vrouter-metatable-%s@%" PRIu8,
+		 vr->ifp->name, vr->vrid);
 
 	/* Setup metatable for our vrouter object */
 	if (luaL_newmetatable(L, key) == 1) {
@@ -157,178 +165,226 @@ static void vrrp_lua_pushvrouter(lua_State *L, const struct vrrp_vrouter *vr)
 	lua_remove(L, -2);
 }
 
-static void vrrp_handle_lua_err(lua_State *L, int err) {
-	if (err) {
-		const char *errstring = lua_tostring(L, -1);
-		fprintf(stderr, "Error: %d - %s\n", err, errstring);
-	}
-	else {
-		fprintf(stderr, "Ok\n");
-	}
-}
+/* Object Tracking ---------------------------------------------------------- */
 
 static lua_State *L;
 
-/* VRRP tracking types ----------------------------------------------------- */
+/*
+ * The following three tables together with their wrappers provide the following functions:
+ *
+ * - Adding, removing, and looking up assocations between objects and the
+ *   virtual routers tracking them
+ * - Adding, removing, and looking up associations between virtual routers and
+ *   the objects they are tracking
+ * - Adding, removing, and looking up assocations between virtual routers and
+ *   their lua_States
+ *
+ * Essentially these are structure extensions implemented as hash tables. There
+ * are a few reasons for doing it like this:
+ *
+ * - Keeps tracking data isolated
+ * - Keeps bloat out of struct vrrp_vrouter
+ * - It's fast
+ *
+ * Ideally no statics would be used but the mapping for objects must be stored
+ * statically anyway, so might as well make it easy.
+ */
 
 /*
- * Key: object ID
- * Val: struct vrrp_vrouter
+ * This hash maps a tracked object to a linked list of the virtual routers that
+ * are tracking it.
+ *
+ * Key: struct tracked_object
+ * Val: struct vrrp_objvr_hash_entry
  */
-static struct hash *vrrp_trackhash;
+static struct hash *vrrp_objvr_hash;
 
-/* Builtin action chunks */
-const char *vrrp_tracking_builtin_actions[] = {
-
-[VRRP_TRACKING_ACTION_DECREMENT] = "\
-if (obj.state == OBJ_DOWN) then\
-    vr:set_priority(vr.priority - %d) \
-end",
-};
-
-
-struct vrrp_trackhash_entry {
+struct vrrp_objvr_hash_entry {
 	/* Tracked object */
 	struct tracked_object *obj;
 	/* List of vrouters tracking the object */
 	struct list *tracklist;
 };
 
-static unsigned int vrrp_trackhash_key(void *obj)
+static unsigned int vrrp_objvr_hash_key(const void *obj)
 {
-	struct vrrp_trackhash_entry *e = obj;
+	const struct vrrp_objvr_hash_entry *e = obj;
 
 	return e->obj->id;
 }
 
-static bool vrrp_trackhash_cmp(const void *val1, const void *val2)
+static bool vrrp_objvr_hash_cmp(const void *val1, const void *val2)
 {
-	const struct vrrp_trackhash_entry *e1 = val1;
-	const struct vrrp_trackhash_entry *e2 = val2;
+	const struct vrrp_objvr_hash_entry *e1 = val1;
+	const struct vrrp_objvr_hash_entry *e2 = val2;
 
 	return e1->obj->id == e2->obj->id;
 }
 
-void vrrp_tracking_init(char *script)
-{
-	if (script)
-		fprintf(stderr, "Script file: %s\n", script);
-
-	L = frrlua_initialize(script);
-
-	if (!L)
-		return;
-
-	vrrp_trackhash = hash_create(vrrp_trackhash_key, vrrp_trackhash_cmp,
-				     "VRRP object tracking table");
-}
-
-/* Lua Extensions ---------------------------------------------------------- */
-
 /*
- * The Lua function names we will call for different object types.
+ * This hash maps a virtual router to a linked list of ojects that it is
+ * tracking. It is the reverse mapping of the above hash.
+ *
+ * Key: virtual router
+ * Val: struct vrrp_objtrack_hash_entry
  */
-const char *vrrp_tracking_lua_entrypoint = "vrrp_tracking_update";
+static struct hash *vrrp_vrobj_hash;
 
-/*
- * Push the table associated wth VRRP vrouter onto the stack
- */
-static void vrrp_tracking_getregtable(struct vrrp_vrouter *vr)
+struct vrrp_vrobj_hash_entry {
+	/* Virtual router */
+	struct vrrp_vrouter *vr;
+	/* List of objects this VR is tracking */
+	struct list *tracklist;
+};
+
+static unsigned int vrrp_vrobj_hash_key(const void *data)
 {
-	char key[BUFSIZ];
+	const struct vrrp_vrobj_hash_entry *e = data;
 
-	vrrp_vrouter_regkey(vr, key, sizeof(key));
-	if (!luaL_getsubtable(L, LUA_REGISTRYINDEX, key))
-		zlog_warn("Created new registry subtable %s", key);
+	return vrrp_hash_key(e->vr);
 }
 
-
-/* Some object event has occurred; handle it */
-static void vrrp_ot_handle(struct tracked_object *obj, struct vrrp_vrouter *vr)
+static bool vrrp_vrobj_hash_cmp(const void *val1, const void *val2)
 {
-	int err;
+	const struct vrrp_vrobj_hash_entry *e1 = val1;
+	const struct vrrp_vrobj_hash_entry *e2 = val2;
 
-	/* Get regsubtable for this vrouter */
-	vrrp_tracking_getregtable(vr);
-
-	/* Get script path from regsubtable */
-	assert(lua_istable(L, -1));
-	lua_pushstring(L, "action");
-	lua_gettable(L, -2);
-
-	/* Pop regsubtable */
-	lua_remove(L, -2);
-
-	/* Load script at path */
-	assert(lua_isstring(L, -1));
-	const char *path = lua_tostring(L, -1);
-	err = luaL_loadfile(L, path);
-	vrrp_handle_lua_err(L, err);
-
-	assert(lua_isfunction(L, -1));
-
-	zlog_warn("Loaded %s", path);
-
-	/* Set 'vr' as global variable */
-	vrrp_lua_pushvrouter(L, vr);
-	lua_setglobal(L, "vr");
-
-	/* Set 'obj' as global variable */
-	objtrack_lua_pushtrackedobject(L, obj);
-	lua_setglobal(L, "obj");
-
-	/* Set state literals as global variables */
-	lua_pushinteger(L, OBJ_UP);
-	lua_setglobal(L, "OBJ_UP");
-	lua_pushinteger(L, OBJ_DOWN);
-	lua_setglobal(L, "OBJ_DOWN");
-
-	/* Call handler */
-	err = lua_pcall(L, 0, 1, 0);
-	vrrp_handle_lua_err(L, err);
-
-	const char *result = lua_tostring(L, -1);
-	fprintf(stderr, "result: %s\n", result);
+	return e1->vr == e2->vr;
 }
 
-/* VRRP tracking bindings --------------------------------------------------- */
-
-static void *vrrp_trackhash_alloc(void *arg)
+/* Wrappers for the above three hashes */
+static void *vrrp_objvr_hash_alloc(void *arg)
 {
-	struct vrrp_trackhash_entry *the = arg;
-	struct vrrp_trackhash_entry *e =
-		XCALLOC(MTYPE_TMP, sizeof(struct vrrp_trackhash_entry));
-	struct list *tracklist = list_new();
+	struct vrrp_objvr_hash_entry *the = arg;
+	struct vrrp_objvr_hash_entry *e =
+		XCALLOC(MTYPE_TMP, sizeof(struct vrrp_objvr_hash_entry));
 
+	/* XXX: Fixme */
 	e->obj = XCALLOC(MTYPE_TMP, sizeof(struct tracked_object));
 	memcpy(e->obj, the->obj, sizeof(struct tracked_object));
-	e->tracklist = tracklist;
+	e->tracklist = list_new();
 
 	return e;
 }
 
-/*
- * objtrackd has sent us an object whose state has presumably changed; invoke
- * Lua handler for every vrouer tracking this object
- */
-void vrrp_tracking_event(struct tracked_object *obj)
+
+static void *vrrp_vrobj_hash_alloc(void *arg)
 {
-	struct listnode *ln;
-	struct vrrp_vrouter *vr;
+	struct vrrp_vrobj_hash_entry vohe, *v;
+	vohe.vr = arg;
 
-	struct vrrp_trackhash_entry e = {
-		.obj = obj,
-	};
-	struct vrrp_trackhash_entry *v;
+	v = XCALLOC(MTYPE_TMP, sizeof(struct vrrp_vrobj_hash_entry));
+	v->vr = arg;
+	v->tracklist = list_new();
 
-	v = hash_lookup(vrrp_trackhash, &e);
+	return v;
+}
 
-	if (!v)
-		return;
+static struct list *vrrp_tracking_get_objects(struct vrrp_vrouter *vr)
+{
+	struct vrrp_vrobj_hash_entry vohe, *v;
+	vohe.vr = vr;
 
-	for (ALL_LIST_ELEMENTS_RO(v->tracklist, ln, vr)) {
-		vrrp_ot_handle(obj, vr);
+	v = hash_get(vrrp_vrobj_hash, &vohe, vrrp_vrobj_hash_alloc);
+
+	if (!v) {
+		zlog_err(VRRP_LOGPFX VRRP_LOGPFX_VRID
+			 "VRRP router not registered with tracking",
+			 vr->vrid);
+		return NULL;
 	}
+
+	return v->tracklist;
+}
+
+static struct list *vrrp_tracking_get_vrs(struct tracked_object *obj)
+{
+	struct vrrp_objvr_hash_entry ovhe, *v;
+	ovhe.obj = obj;
+
+	v = hash_get(vrrp_objvr_hash, &ovhe, vrrp_objvr_hash_alloc);
+
+	return v->tracklist;
+}
+
+static void vrrp_tracking_add_object(struct vrrp_vrouter *vr, struct tracked_object *obj)
+{
+	struct list *objvrlist = vrrp_tracking_get_objects(vr);
+	struct list *vrobjlist = vrrp_tracking_get_vrs(obj);
+
+	/* XXX: check for duplicates */
+	listnode_add(vrobjlist, obj);
+	listnode_add(objvrlist, vr);
+}
+
+static void vrrp_tracking_remove_object(struct vrrp_vrouter *vr, struct tracked_object *obj)
+{
+	struct list *vrobjlist = vrrp_tracking_get_objects(vr);
+	struct list *objvrlist = vrrp_tracking_get_vrs(obj);
+
+	listnode_delete(vrobjlist, obj);
+	listnode_delete(objvrlist, vr);
+
+	/* XXX: If vrobjlist empty, delete entry from hash */
+	/* XXX: If objvrlist empty, delete entry from hash */
+
+	/* If vrobjlist empty, delete router from Lua registry */
+}
+
+/*
+ * Push the table associated wth VRRP vrouter onto the stack
+ */
+static bool vrrp_tracking_getregtable(lua_State *L, struct vrrp_vrouter *vr)
+{
+	char key[BUFSIZ];
+
+	vrrp_vrouter_regkey(vr, key, sizeof(key));
+	bool created = !luaL_getsubtable(L, LUA_REGISTRYINDEX, key);
+
+	if (created)
+		zlog_info("Created new registry subtable %s", key);
+
+	return created;
+}
+
+/*
+ * Builtin action chunks.
+ *
+ * Rather than a dual-backend approach, where the default tracking actions -
+ * decrement and increment - are implemented totally in C, while everything
+ * else happens in Lua, it's cleaner and cooler to always hit Lua for our
+ * tracking actions. We do this by hardcoding Lua snippets corresponding to
+ * each action. We give Lua access to configuration variables by exporting them
+ * to the Lua environment in hardcoded variable names used in the snippets.
+ *
+ * Ideally the entire environment would be encoded into this array but for now
+ * there's still a bit of glue code below it that needs to be poked to add more
+ * builtins here.
+ */
+#define BUILTIN_PRIO_ADJUST "__PRIO_ADJUST"
+
+const char *vrrp_tracking_builtin_actions[] = {
+	[VRRP_TRACKING_ACTION_DECREMENT] = "\
+	if (obj.state == OBJ_DOWN) then\
+	    vr:set_priority(vr.priority - " BUILTIN_PRIO_ADJUST ") \
+	end",
+	[VRRP_TRACKING_ACTION_INCREMENT] = "\
+	if (obj.state == OBJ_DOWN) then\
+	    vr:set_priority(vr.priority + " BUILTIN_PRIO_ADJUST ") \
+	end",
+};
+
+static void vrrp_tracking_set_builtin(lua_State *L, struct vrrp_vrouter *vr,
+				      enum vrrp_tracking_actiontype tt,
+				      const void *actionarg)
+{
+	/* Get or create registry table for this vrouter */
+	vrrp_tracking_getregtable(L, vr);
+
+	/* Set script as "action" field */
+	assert(lua_istable(L, -1));
+
+	lua_setfield(L, -2, "action");
 }
 
 /*
@@ -339,10 +395,11 @@ void vrrp_tracking_event(struct tracked_object *obj)
  * it a nice environment with lots of VRRP information and an object it can use
  * to manipulate the vrouter, and run it.
  */
-static void vrrp_tracking_set_script(struct vrrp_vrouter *vr, const char *path)
+static void vrrp_tracking_set_script(lua_State *L, struct vrrp_vrouter *vr,
+				     const char *path)
 {
 	/* Get or create registry table for this vrouter */
-	vrrp_tracking_getregtable(vr);
+	vrrp_tracking_getregtable(L, vr);
 
 	/* Set script as "action" field */
 	assert(lua_istable(L, -1));
@@ -352,6 +409,118 @@ static void vrrp_tracking_set_script(struct vrrp_vrouter *vr, const char *path)
 	/* Pop vrouter regtable */
 	assert(lua_istable(L, -1));
 	lua_pop(L, -1);
+}
+
+/* Some object event has occurred; handle it */
+static int vrrp_tracking_handle(lua_State *L, struct tracked_object *obj,
+			   struct vrrp_vrouter *vr)
+{
+	int err;
+
+	/* Get regsubtable for this vrouter */
+	bool created = !vrrp_tracking_getregtable(L, vr);
+	assert(!created);
+
+	/* Get action */
+	lua_pushliteral(L, "action");
+	lua_gettable(L, -2);
+	lua_remove(L, -2);
+	assert(lua_isstring(L, -1) || lua_isfunction(L, -1));
+
+	if (lua_isstring(L, -1)) {
+		const char *path = lua_tostring(L, -1);
+		const char *errstring = NULL;
+
+		assert(path);
+		err = luaL_loadfile(L, path);
+		/* Remove path */
+		lua_remove(L, -2);
+
+		if (err != LUA_OK)
+			errstring = lua_tostring(L, -1);
+
+		switch (err) {
+		case LUA_OK:
+			break;
+		case LUA_ERRSYNTAX:
+		case LUA_ERRMEM:
+		case LUA_ERRGCMM:
+		default:
+			zlog_warn(VRRP_LOGPFX "Unable to load script at %s: %s",
+				  path, errstring);
+			/* Error string cannot be used after this point! */
+			lua_pop(L, 1);
+			break;
+		}
+
+		/* Stack must be clean at this point! */
+		if (err != LUA_OK)
+			return err;
+
+		zlog_info(VRRP_LOGPFX "Loaded %s", path);
+	}
+
+	assert(lua_isfunction(L, -1));
+
+	/* Set up the script environment */
+
+	/* Set 'vr' as global variable */
+	vrrp_lua_pushvrouter(L, vr);
+	lua_setglobal(L, "vr");
+
+	/* Set 'obj' as global variable */
+	objtrack_lua_pushtrackedobject(L, obj);
+	lua_setglobal(L, "obj");
+
+	/* Set state constants as global variables */
+	lua_pushinteger(L, OBJ_UP);
+	lua_setglobal(L, "OBJ_UP");
+	lua_pushinteger(L, OBJ_DOWN);
+	lua_setglobal(L, "OBJ_DOWN");
+
+	/* Call handler */
+	err = lua_pcall(L, 0, 1, 0);
+
+	/* Clean environment */
+	lua_pushnil(L);
+	lua_setglobal(L, "vr");
+	lua_pushnil(L);
+	lua_setglobal(L, "obj");
+	lua_pushnil(L);
+	lua_setglobal(L, "OBJ_UP");
+	lua_pushnil(L);
+	lua_setglobal(L, "OBJ_DOWN");
+
+	return err;
+}
+
+/* Tracking API ------------------------------------------------------------ */
+
+/*
+ * Handler for object tracking events. Invoke Lua handler for every vrouter
+ * tracking this object.
+ *
+ * obj
+ *    The object that has changed
+ */
+void vrrp_tracking_event(struct tracked_object *obj)
+{
+	struct listnode *ln;
+	struct vrrp_vrouter *vr;
+
+	struct vrrp_objvr_hash_entry e = {
+		.obj = obj,
+	};
+	struct vrrp_objvr_hash_entry *v;
+
+	v = hash_lookup(vrrp_objvr_hash, &e);
+
+	if (!v)
+		return;
+
+	for (ALL_LIST_ELEMENTS_RO(v->tracklist, ln, vr)) {
+		vrrp_tracking_handle(L, obj, vr);
+	}
 }
 
 /*
@@ -370,27 +539,34 @@ void vrrp_track_object(struct vrrp_vrouter *vr, struct tracked_object *obj,
 		       enum vrrp_tracking_actiontype actiontype,
 		       const void *actionarg)
 {
-	struct vrrp_trackhash_entry e = {};
-	struct vrrp_trackhash_entry *v;
-
-	int decrement;
 	const char *script;
 
-	e.obj = obj;
-	v = hash_get(vrrp_trackhash, &e, vrrp_trackhash_alloc);
+	vrrp_tracking_add_object(vr, obj);
 
 	switch (actiontype) {
-		case VRRP_TRACKING_ACTION_DECREMENT:
-			decrement = *((int *)actionarg);
-			break;
 		case VRRP_TRACKING_ACTION_SCRIPT:
 			script = actionarg;
-			vrrp_tracking_set_script(vr, script);
+			vrrp_tracking_set_script(L, vr, script);
+			break;
+		default:
+			vrrp_tracking_set_builtin(L, vr, actiontype, actionarg);
 			break;
 	}
+}
 
-	if (actionarg == NULL)
-		listnode_delete(v->tracklist, vr);
-	else
-		listnode_add(v->tracklist, vr);
+void vrrp_untrack_object(struct vrrp_vrouter *vr, struct tracked_object *obj)
+{
+	vrrp_tracking_remove_object(vr, obj);
+}
+
+void vrrp_tracking_init(char *script)
+{
+	vrrp_objvr_hash = hash_create(vrrp_objvr_hash_key, vrrp_objvr_hash_cmp,
+				      "VRRP reverse object tracking table");
+	vrrp_vrobj_hash = hash_create(vrrp_vrobj_hash_key, vrrp_vrobj_hash_cmp,
+				      "VRRP object tracking table");
+
+	L = frrlua_initialize(script);
+
+	zlog_notice("Initialized VRRP object tracking");
 }

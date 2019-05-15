@@ -65,10 +65,10 @@ int frrlua_table_get_integer(lua_State *L, const char *key)
 	return result;
 }
 
-static void *frrlua_alloc(void *ud, void *ptr, size_t osize,
-		       size_t nsize)
+void *frrlua_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
 {
-	(void)ud;  (void)osize;  /* not used */
+	(void)ud;
+	(void)osize; /* not used */
 	if (nsize == 0) {
 		free(ptr);
 		return NULL;

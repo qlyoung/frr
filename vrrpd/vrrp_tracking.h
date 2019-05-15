@@ -46,14 +46,21 @@ struct tracked_object {
 
 /* VRRP tracking ------------------------------------------------------------ */
 
+struct vrrp_tracking {
+	struct vrrp_vrouter *vr;
+	struct list *objects;
+};
+
 enum vrrp_tracking_actiontype {
 	VRRP_TRACKING_ACTION_DECREMENT,
+	VRRP_TRACKING_ACTION_INCREMENT,
 	VRRP_TRACKING_ACTION_SCRIPT,
 };
 
 void vrrp_tracking_init(char *script);
 void vrrp_track_object(struct vrrp_vrouter *vr, struct tracked_object *obj,
 		       enum vrrp_tracking_actiontype type, const void *actionarg);
+void vrrp_untrack_object(struct vrrp_vrouter *vr, struct tracked_object *obj);
 void vrrp_tracking_event(struct tracked_object *obj);
 
 #endif /* __VRRP_TRACKING_H__ */
