@@ -48,8 +48,6 @@
  */
 static void objtrack_lua_pushtrackedobject(lua_State *L, const struct tracked_object *obj)
 {
-	zlog_debug("pushing tracked_object");
-
 	lua_newtable(L);
 	lua_pushinteger(L, obj->id);
 	lua_setfield(L, -2, "id");
@@ -71,12 +69,13 @@ static void objtrack_lua_pushtrackedobject(lua_State *L, const struct tracked_ob
  */
 static int vrrp_tracking_vr_set_priority(lua_State *L)
 {
-	zlog_err("%s called with %d arguments", __func__, lua_gettop(L));
+	zlog_info(VRRP_LOGPFX "%s called with %d arguments", __func__,
+		  lua_gettop(L));
 
 	struct vrrp_vrouter *vr = (*(void**) lua_touserdata(L, -2));
 	int prio = lua_tointeger(L, -1);
 
-	zlog_err("priority = %d", prio);
+	zlog_err(VRRP_LOGPFX "priority = %d", prio);
 
 	vrrp_set_priority(vr, prio);
 
@@ -127,7 +126,7 @@ static void vrrp_vrouter_regkey(const struct vrrp_vrouter *vr, char *buf,
  */
 static void vrrp_lua_pushvrouter(lua_State *L, const struct vrrp_vrouter *vr)
 {
-	zlog_debug("pushing vrrp_vrouter");
+	zlog_debug(VRRP_LOGPFX "pushing vrrp_vrouter");
 
 	char key[IFNAMSIZ + 64];
 
@@ -270,11 +269,11 @@ static void *vrrp_objvr_hash_alloc(void *arg)
 
 static void *vrrp_vrobj_hash_alloc(void *arg)
 {
-	struct vrrp_vrobj_hash_entry vohe, *v;
-	vohe.vr = arg;
+	struct vrrp_vrobj_hash_entry *vohe, *v;
+	vohe = arg;
 
 	v = XCALLOC(MTYPE_TMP, sizeof(struct vrrp_vrobj_hash_entry));
-	v->vr = arg;
+	v->vr = vohe->vr;
 	v->tracklist = list_new();
 
 	return v;
@@ -282,7 +281,7 @@ static void *vrrp_vrobj_hash_alloc(void *arg)
 
 static struct list *vrrp_tracking_get_objects(struct vrrp_vrouter *vr)
 {
-	struct vrrp_vrobj_hash_entry vohe, *v;
+	struct vrrp_vrobj_hash_entry vohe = {}, *v;
 	vohe.vr = vr;
 
 	v = hash_get(vrrp_vrobj_hash, &vohe, vrrp_vrobj_hash_alloc);
@@ -309,8 +308,8 @@ static struct list *vrrp_tracking_get_vrs(struct tracked_object *obj)
 
 static void vrrp_tracking_add_object(struct vrrp_vrouter *vr, struct tracked_object *obj)
 {
-	struct list *objvrlist = vrrp_tracking_get_objects(vr);
-	struct list *vrobjlist = vrrp_tracking_get_vrs(obj);
+	struct list *objvrlist = vrrp_tracking_get_vrs(obj);
+	struct list *vrobjlist = vrrp_tracking_get_objects(vr);
 
 	/* XXX: check for duplicates */
 	listnode_add(vrobjlist, obj);
@@ -342,7 +341,9 @@ static bool vrrp_tracking_getregtable(lua_State *L, struct vrrp_vrouter *vr)
 	bool created = !luaL_getsubtable(L, LUA_REGISTRYINDEX, key);
 
 	if (created)
-		zlog_info("Created new registry subtable %s", key);
+		zlog_info(VRRP_LOGPFX VRRP_LOGPFX_VRID
+			  "Created new registry subtable %s",
+			  vr->vrid, key);
 
 	return created;
 }
@@ -361,16 +362,16 @@ static bool vrrp_tracking_getregtable(lua_State *L, struct vrrp_vrouter *vr)
  * there's still a bit of glue code below it that needs to be poked to add more
  * builtins here.
  */
-#define BUILTIN_PRIO_ADJUST "__PRIO_ADJUST"
-
 const char *vrrp_tracking_builtin_actions[] = {
 	[VRRP_TRACKING_ACTION_DECREMENT] = "\
+	prio = ... \
 	if (obj.state == OBJ_DOWN) then\
-	    vr:set_priority(vr.priority - " BUILTIN_PRIO_ADJUST ") \
+	    vr:set_priority(vr.priority - prio) \
 	end",
 	[VRRP_TRACKING_ACTION_INCREMENT] = "\
+	prio = ... \
 	if (obj.state == OBJ_DOWN) then\
-	    vr:set_priority(vr.priority + " BUILTIN_PRIO_ADJUST ") \
+	    vr:set_priority(vr.priority + prio) \
 	end",
 };
 
@@ -384,7 +385,11 @@ static void vrrp_tracking_set_builtin(lua_State *L, struct vrrp_vrouter *vr,
 	/* Set script as "action" field */
 	assert(lua_istable(L, -1));
 
+	/* Compile chunk and store as action */
+	luaL_loadstring(L, vrrp_tracking_builtin_actions[tt]);
 	lua_setfield(L, -2, "action");
+
+	lua_pop(L, 1);
 }
 
 /*
@@ -408,17 +413,33 @@ static void vrrp_tracking_set_script(lua_State *L, struct vrrp_vrouter *vr,
 
 	/* Pop vrouter regtable */
 	assert(lua_istable(L, -1));
-	lua_pop(L, -1);
+	lua_pop(L, 1);
+}
+
+static void vrrp_tracking_set_action(struct vrrp_vrouter *vr,
+				     struct tracked_object *obj,
+				     enum vrrp_tracking_actiontype at,
+				     const void *arg)
+{
+	switch (at) {
+		case VRRP_TRACKING_ACTION_DECREMENT:
+		case VRRP_TRACKING_ACTION_INCREMENT:
+			vrrp_tracking_set_builtin(L, vr, at, arg);
+			break;
+		case VRRP_TRACKING_ACTION_SCRIPT:
+			vrrp_tracking_set_script(L, vr, arg);
+			break;
+	}
 }
 
 /* Some object event has occurred; handle it */
 static int vrrp_tracking_handle(lua_State *L, struct tracked_object *obj,
-			   struct vrrp_vrouter *vr)
+				struct vrrp_vrouter *vr)
 {
 	int err;
 
 	/* Get regsubtable for this vrouter */
-	bool created = !vrrp_tracking_getregtable(L, vr);
+	bool created = vrrp_tracking_getregtable(L, vr);
 	assert(!created);
 
 	/* Get action */
@@ -427,6 +448,7 @@ static int vrrp_tracking_handle(lua_State *L, struct tracked_object *obj,
 	lua_remove(L, -2);
 	assert(lua_isstring(L, -1) || lua_isfunction(L, -1));
 
+	/* If it's a file path, load the chunk in that file */
 	if (lua_isstring(L, -1)) {
 		const char *path = lua_tostring(L, -1);
 		const char *errstring = NULL;
@@ -462,96 +484,79 @@ static int vrrp_tracking_handle(lua_State *L, struct tracked_object *obj,
 
 	assert(lua_isfunction(L, -1));
 
-	/* Set up the script environment */
+	/* Create a clean environment table for the chunk */
+	lua_newtable(L);
+	{
+		/* Add 'vr' to the environment */
+		vrrp_lua_pushvrouter(L, vr);
+		lua_setfield(L, -2, "vr");
 
-	/* Set 'vr' as global variable */
-	vrrp_lua_pushvrouter(L, vr);
-	lua_setglobal(L, "vr");
+		/* Add 'obj' to the environment */
+		zlog_debug(VRRP_LOGPFX "pushing tracked_object");
+		objtrack_lua_pushtrackedobject(L, obj);
+		lua_setfield(L, -2, "obj");
 
-	/* Set 'obj' as global variable */
-	objtrack_lua_pushtrackedobject(L, obj);
-	lua_setglobal(L, "obj");
+		/* Add state constants to the environment */
+		lua_pushinteger(L, OBJ_UP);
+		lua_setfield(L, -2, "OBJ_UP");
+		lua_pushinteger(L, OBJ_DOWN);
+		lua_setfield(L, -2, "OBJ_DOWN");
+	}
+	const char *uvname = lua_setupvalue(L, -2, 1);
 
-	/* Set state constants as global variables */
-	lua_pushinteger(L, OBJ_UP);
-	lua_setglobal(L, "OBJ_UP");
-	lua_pushinteger(L, OBJ_DOWN);
-	lua_setglobal(L, "OBJ_DOWN");
+	/* Make sure we did that right */
+	assert(!strncmp(uvname, "_ENV", strlen("_ENV")));
+
+	/* Push args */
+	lua_pushinteger(L, 5);
 
 	/* Call handler */
-	err = lua_pcall(L, 0, 1, 0);
-
-	/* Clean environment */
-	lua_pushnil(L);
-	lua_setglobal(L, "vr");
-	lua_pushnil(L);
-	lua_setglobal(L, "obj");
-	lua_pushnil(L);
-	lua_setglobal(L, "OBJ_UP");
-	lua_pushnil(L);
-	lua_setglobal(L, "OBJ_DOWN");
+	err = lua_pcall(L, 1, 0, 0);
 
 	return err;
 }
 
 /* Tracking API ------------------------------------------------------------ */
 
-/*
- * Handler for object tracking events. Invoke Lua handler for every vrouter
- * tracking this object.
- *
- * obj
- *    The object that has changed
- */
 void vrrp_tracking_event(struct tracked_object *obj)
 {
 	struct listnode *ln;
 	struct vrrp_vrouter *vr;
+	struct list *tracklist;
+	int err;
+	const char *errstring;
 
-	struct vrrp_objvr_hash_entry e = {
-		.obj = obj,
-	};
-	struct vrrp_objvr_hash_entry *v;
+	tracklist = vrrp_tracking_get_vrs(obj);
 
-	v = hash_lookup(vrrp_objvr_hash, &e);
+	for (ALL_LIST_ELEMENTS_RO(tracklist, ln, vr)) {
+		err = vrrp_tracking_handle(L, obj, vr);
+		errstring = NULL;
 
-	if (!v)
-		return;
-
-	for (ALL_LIST_ELEMENTS_RO(v->tracklist, ln, vr)) {
-		vrrp_tracking_handle(L, obj, vr);
+		switch (err) {
+		case LUA_OK:
+			zlog_warn("Okay");
+			errstring = lua_tostring(L, -1);
+			break;
+		case LUA_ERRRUN:
+		case LUA_ERRMEM:
+		case LUA_ERRERR:
+		case LUA_ERRGCMM:
+		default:
+			errstring = lua_tostring(L, -1);
+			zlog_warn(VRRP_LOGPFX "Call failed: %s", errstring);
+			/* Error string cannot be used after this point! */
+			lua_pop(L, 1);
+			break;
+		}
 	}
 }
 
-/*
- * Make a virtual router track an object.
- *
- * vr
- *    Virtual router
- *
- * obj
- *    Object that vr should track
- *
- * action
- *    Either a Lua chunk defining the function 'vrrp_tracking_update'.
- */
 void vrrp_track_object(struct vrrp_vrouter *vr, struct tracked_object *obj,
 		       enum vrrp_tracking_actiontype actiontype,
 		       const void *actionarg)
 {
-	const char *script;
-
 	vrrp_tracking_add_object(vr, obj);
-
-	switch (actiontype) {
-		case VRRP_TRACKING_ACTION_SCRIPT:
-			script = actionarg;
-			vrrp_tracking_set_script(L, vr, script);
-			break;
-		default:
-			vrrp_tracking_set_builtin(L, vr, actiontype, actionarg);
-			break;
-	}
+	vrrp_tracking_set_action(vr, obj, actiontype, actionarg);
 }
 
 void vrrp_untrack_object(struct vrrp_vrouter *vr, struct tracked_object *obj)
