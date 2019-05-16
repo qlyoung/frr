@@ -383,7 +383,10 @@ DEFPY(vrrp_track,
 		actionarg = luascript;
 	}
 
-	vrrp_track_object(vr, &obj, actiontype, actionarg);
+	if (!no)
+		vrrp_track_object(vr, &obj, actiontype, actionarg);
+	else
+		vrrp_untrack_object(vr, &obj);
 
 	return CMD_SUCCESS;
 }
