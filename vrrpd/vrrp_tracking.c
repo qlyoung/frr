@@ -55,7 +55,6 @@ static void objtrack_lua_pushtrackedobject(lua_State *L, const struct tracked_ob
 	lua_setfield(L, -2, "type");
 	lua_pushinteger(L, obj->state);
 	lua_setfield(L, -2, "state");
-
 }
 
 /* Lua VRRP object methods ------------------------------------------------- */
@@ -92,10 +91,13 @@ static const luaL_Reg vr_funcs[] = {
 
 /*
  * Compute a unique key to use for storing any and all data related to the
- * vrouter in the registry.
+ * (obj, vrouter) tuple in the registry.
  *
  * vr
  *    Virtual router to compute key for
+ *
+ * obj
+ *    Object associated with this vrouter
  *
  * buf
  *    Buffer to store the key in
@@ -103,10 +105,12 @@ static const luaL_Reg vr_funcs[] = {
  * buflen
  *    Size of buf
  */
-static void vrrp_vrouter_regkey(const struct vrrp_vrouter *vr, char *buf,
+static void vrrp_vrouter_regkey(const struct vrrp_vrouter *vr,
+				struct tracked_object *obj, char *buf,
 				size_t buflen)
 {
-	snprintf(buf, buflen, "vrouter-%s@%" PRIu8, vr->ifp->name, vr->vrid);
+	snprintf(buf, buflen, "%d@%s@%" PRIu8, obj->id, vr->ifp->name,
+		 vr->vrid);
 }
 
 /*
@@ -166,6 +170,67 @@ static void vrrp_lua_pushvrouter(lua_State *L, const struct vrrp_vrouter *vr)
 
 /* Object Tracking ---------------------------------------------------------- */
 
+/*
+ * The global Lua state for VRRPD.
+ *
+ * Specific data for each (obj, vrouter) tuple is stored in a table in the Lua
+ * registry. To get this table use vrrp_tracking_getregtable(vr). This table
+ * has the following format:
+ *
+ * "<objid>@<ifname>@<vrid>" = {
+ *    "action" = "path/to/script" || <compiled chunk>,
+ *    "args" = {
+ *       1 = arg1,
+ *       2 = arg2,
+ *       ...
+ *       N = argN,
+ *    },
+ *    "env" = {
+ *       "var1" = val1,
+ *       "var2" = val2,
+ *       ...
+ *       "varN" = valN,
+ *    }
+ * }
+ *
+ * When a user requests that a particular vrouter track a particular object, we
+ * store the desired action - a path to a Lua script if the user specified one,
+ * or a compiled chunk if they specified one of VRRP's built in actions - in
+ * the "action" field. Any arguments are stored in the "args" array and any
+ * environment variables are stored in the "env" table. nil is not allowed in
+ * "args" or "env".
+ *
+ * Suppose the table for a particular vrouter is t. When an event occurs, this
+ * table is examined. t["action"] may be a Lua function or a script. If it is a
+ * string, it is taken to be a path (full or relative to the cwd) to the Lua
+ * script, which is then loaded and compiled.  The function is then run with
+ * its environment equal to t["env"], and with the arguments specified in
+ * t["args"], pushed in order starting from 1. For instance, if:
+ *
+ *    t["args"] = {
+ *       1 = "dog",
+ *       2 = "cat",
+ *    }
+ *
+ * Then in the chunk, unpacking the varargs:
+ *
+ *    a,b = ...
+ *
+ * We have:
+ *
+ *    a = "dog"
+ *    b = "cat
+ *
+ * Similarly if
+ *
+ *    t["env"] = {
+ *       'vr' = userdata,
+ *       'OBJ_UP' = 1,
+ *       'OBJ_DOWN' = 2,
+ *    }
+ *
+ * Then the chunk will have access to variables named vr, OBJ_UP and OBJ_DOWN.
+ */
 static lua_State *L;
 
 /*
@@ -258,14 +323,16 @@ static void *vrrp_objvr_hash_alloc(void *arg)
 	struct vrrp_objvr_hash_entry *e =
 		XCALLOC(MTYPE_TMP, sizeof(struct vrrp_objvr_hash_entry));
 
-	/* XXX: Fixme */
+	/*
+	 * XXX: Fixme, cannot copy this as we need the same pointer in order to
+	 * delete it later
+	 */
 	e->obj = XCALLOC(MTYPE_TMP, sizeof(struct tracked_object));
 	memcpy(e->obj, the->obj, sizeof(struct tracked_object));
 	e->tracklist = list_new();
 
 	return e;
 }
-
 
 static void *vrrp_vrobj_hash_alloc(void *arg)
 {
@@ -318,26 +385,82 @@ static void vrrp_tracking_add_object(struct vrrp_vrouter *vr, struct tracked_obj
 
 static void vrrp_tracking_remove_object(struct vrrp_vrouter *vr, struct tracked_object *obj)
 {
-	struct list *vrobjlist = vrrp_tracking_get_objects(vr);
-	struct list *objvrlist = vrrp_tracking_get_vrs(obj);
+	struct vrrp_vrobj_hash_entry vohe = {}, *r1;
+	struct vrrp_objvr_hash_entry ovhe = {}, *r2;
 
+	vohe.vr = vr;
+	ovhe.obj = obj;
+
+	r1 = hash_lookup(vrrp_vrobj_hash, &vohe);
+	r2 = hash_lookup(vrrp_objvr_hash, &ovhe);
+
+	/* Consistency check: make sure both lists exist if the primary does */
+	if (!r1)
+		return;
+
+	assert(r2);
+
+	struct list *vrobjlist = r1->tracklist;
+	struct list *objvrlist = r2->tracklist;
+
+	/* Consistency check: make sure our reverse mapping is present */
+	bool found = false;
+	struct listnode *ln;
+	struct vrrp_vrouter *vr2;
+	for (ALL_LIST_ELEMENTS_RO(objvrlist, ln, vr2))
+		if (vr == vr2) {
+			found = true;
+			break;
+		}
+	assert(found);
+
+	/* XXX: this delete fails cuz obj isn't the same pointer as in the list */
 	listnode_delete(vrobjlist, obj);
 	listnode_delete(objvrlist, vr);
 
-	/* XXX: If vrobjlist empty, delete entry from hash */
-	/* XXX: If objvrlist empty, delete entry from hash */
+	/* If this vrouter isn't tracking anymore objects, delete it */
+	if (vrobjlist->count == 0) {
+		struct vrrp_vrobj_hash_entry vohe = {};
+		vohe.vr = vr;
+		/* Remove list from hash */
+		hash_release(vrrp_vrobj_hash, &vohe);
+		/* Unset registry table for vrouter */
+		char key[BUFSIZ];
+		vrrp_vrouter_regkey(vr, obj, key, sizeof(key));
+		lua_pushnil(L);
+		lua_setfield(L, LUA_REGISTRYINDEX, key);
+		zlog_info(VRRP_LOGPFX VRRP_LOGPFX_VRID
+			  "Destroyed registry subtable %s",
+			  vr->vrid, key);
+		/* Delete list */
+		list_delete(&vrobjlist);
+	}
 
-	/* If vrobjlist empty, delete router from Lua registry */
+	/* If nobody is tracking this object anymore, delete it */
+	if (objvrlist->count == 0) {
+		struct vrrp_objvr_hash_entry ovhe = {};
+		ovhe.obj = obj;
+		hash_release(vrrp_objvr_hash, &ovhe);
+		list_delete(&vrobjlist);
+	}
 }
 
 /*
- * Push the table associated wth VRRP vrouter onto the stack
+ * Push the table associated wth this (obj, vrouter) tuple onto the stack. If
+ * the table does not exist, it is created.
+ *
+ * vr
+ *    Virtual router
+ *
+ * obj
+ *    Tracked object
  */
-static bool vrrp_tracking_getregtable(lua_State *L, struct vrrp_vrouter *vr)
+static bool vrrp_tracking_getregtable(lua_State *L, struct vrrp_vrouter *vr,
+				      struct tracked_object *obj)
 {
 	char key[BUFSIZ];
 
-	vrrp_vrouter_regkey(vr, key, sizeof(key));
+	vrrp_vrouter_regkey(vr, obj, key, sizeof(key));
 	bool created = !luaL_getsubtable(L, LUA_REGISTRYINDEX, key);
 
 	if (created)
@@ -356,11 +479,17 @@ static bool vrrp_tracking_getregtable(lua_State *L, struct vrrp_vrouter *vr)
  * else happens in Lua, it's cleaner and cooler to always hit Lua for our
  * tracking actions. We do this by hardcoding Lua snippets corresponding to
  * each action. We give Lua access to configuration variables by exporting them
- * to the Lua environment in hardcoded variable names used in the snippets.
+ * to the Lua environment in hardcoded variable names used in the hardcoded
+ * snippets.
  *
  * Ideally the entire environment would be encoded into this array but for now
  * there's still a bit of glue code below it that needs to be poked to add more
  * builtins here.
+ *
+ * We pass additional data as argument(s), which are stored in the regsubtable
+ * for the (obj, vrouter). The action setter function is responsible for
+ * storing those arguments in the expected order and number so that the
+ * snippets below work.
  */
 const char *vrrp_tracking_builtin_actions[] = {
 	[VRRP_TRACKING_ACTION_DECREMENT] = "\
@@ -375,71 +504,86 @@ const char *vrrp_tracking_builtin_actions[] = {
 	end",
 };
 
-static void vrrp_tracking_set_builtin(lua_State *L, struct vrrp_vrouter *vr,
-				      enum vrrp_tracking_actiontype tt,
-				      const void *actionarg)
-{
-	/* Get or create registry table for this vrouter */
-	vrrp_tracking_getregtable(L, vr);
-
-	/* Set script as "action" field */
-	assert(lua_istable(L, -1));
-
-	/* Compile chunk and store as action */
-	luaL_loadstring(L, vrrp_tracking_builtin_actions[tt]);
-	lua_setfield(L, -2, "action");
-
-	lua_pop(L, 1);
-}
-
 /*
- * Load the given script as a function and store it in the registry at a unique
- * key we can compute from the vrouter.
+ * Set the action in a vrouter's regsubtable for a tracking event.
  *
  * When an object tracking event occurs, we will fetch the Lua function, give
  * it a nice environment with lots of VRRP information and an object it can use
  * to manipulate the vrouter, and run it.
+ *
+ * vr
+ *    Virtual router
+ *
+ * obj
+ *    Tracked object
+ *
+ * at
+ *    One of the possible action types. If VRRP_TRACKING_ACTION_SCRIPT, then
+ *    'arg' specifies the path of the script. Otherwise this value specifies
+ *    which builtin to use.
+ *
+ * arg
+ *    If 'at' is VRRP_TRACKING_ACTION_SCRIPT, this is the path to the script.
+ *    Otherwise it is the argument to the specified builtin.
  */
-static void vrrp_tracking_set_script(lua_State *L, struct vrrp_vrouter *vr,
-				     const char *path)
+static void vrrp_tracking_set_action(struct vrrp_vrouter *vr,
+				     struct tracked_object *obj,
+				     enum vrrp_tracking_actiontype at,
+				     const void *arg)
 {
-	/* Get or create registry table for this vrouter */
-	vrrp_tracking_getregtable(L, vr);
+	/* Get or create registry table for this (obj, vrouter) */
+	vrrp_tracking_getregtable(L, vr, obj);
+	assert(lua_istable(L, -1));
 
 	/* Set script as "action" field */
-	assert(lua_istable(L, -1));
-	lua_pushstring(L, path);
-	lua_setfield(L, -2, "action");
+	switch (at) {
+		case VRRP_TRACKING_ACTION_DECREMENT:
+		case VRRP_TRACKING_ACTION_INCREMENT:
+			luaL_loadstring(L, vrrp_tracking_builtin_actions[at]);
+			lua_setfield(L, -2, "action");
+			/* Save argument */
+			luaL_getsubtable(L, -1, "args");
+			int idx = luaL_len(L, -1) + 1;
+			lua_pushinteger(L, idx);
+			lua_pushinteger(L, *(int *)arg);
+			lua_settable(L, -3);
+			idx = luaL_len(L, -1);
+			lua_pop(L, 1);
+			break;
+		case VRRP_TRACKING_ACTION_SCRIPT:
+			lua_pushstring(L, arg);
+			lua_setfield(L, -2, "action");
+			break;
+	}
 
 	/* Pop vrouter regtable */
 	assert(lua_istable(L, -1));
 	lua_pop(L, 1);
 }
 
-static void vrrp_tracking_set_action(struct vrrp_vrouter *vr,
-				     struct tracked_object *obj,
-				     enum vrrp_tracking_actiontype at,
-				     const void *arg)
-{
-	switch (at) {
-		case VRRP_TRACKING_ACTION_DECREMENT:
-		case VRRP_TRACKING_ACTION_INCREMENT:
-			vrrp_tracking_set_builtin(L, vr, at, arg);
-			break;
-		case VRRP_TRACKING_ACTION_SCRIPT:
-			vrrp_tracking_set_script(L, vr, arg);
-			break;
-	}
-}
-
-/* Some object event has occurred; handle it */
+/*
+ * Call the action for this (obj, vrouter) tuple.
+ *
+ * This function first retrieves the regsubtable for this (obj, vrouter). The
+ * "action" field may be either a function or a string. If the it is a string,
+ * we load the path represented by that string as a Lua chunk. We then export
+ * the object and vrouter as variables 'obj' and 'vr' in the chunk environment,
+ * and push any arguments saved in the "args" field of the regsubtable. The
+ * return code is the result of lua_pcall().
+ *
+ * obj
+ *    Tracked object
+ *
+ * vr
+ *    Virtual router
+ */
 static int vrrp_tracking_handle(lua_State *L, struct tracked_object *obj,
 				struct vrrp_vrouter *vr)
 {
 	int err;
 
 	/* Get regsubtable for this vrouter */
-	bool created = vrrp_tracking_getregtable(L, vr);
+	bool created = vrrp_tracking_getregtable(L, vr, obj);
 	assert(!created);
 
 	/* Get action */
@@ -506,12 +650,35 @@ static int vrrp_tracking_handle(lua_State *L, struct tracked_object *obj,
 
 	/* Make sure we did that right */
 	assert(!strncmp(uvname, "_ENV", strlen("_ENV")));
+	assert(lua_isfunction(L, -1));
 
 	/* Push args */
-	lua_pushinteger(L, 5);
+	vrrp_tracking_getregtable(L, vr, obj);
+	assert(luaL_getsubtable(L, -1, "args"));
+	int len = luaL_len(L, -1);
+	for (int i = 1; i <= len; i++) {
+		lua_pushinteger(L, i);
+		lua_gettable(L, -(i + 1));
+	}
+	/* Remove args table & vrouter table */
+	lua_remove(L, -(len + 1));
+	lua_remove(L, -(len + 1));
+
+	/*
+	 * Stack is now:
+	 *
+	 * argN | -1
+	 * ...  | -2
+	 * arg1 | -(len)
+	 * func | -(len + 1)
+	 */
+	assert(lua_isfunction(L, -(len + 1)));
 
 	/* Call handler */
-	err = lua_pcall(L, 1, 0, 0);
+	zlog_info(VRRP_LOGPFX VRRP_LOGPFX_VRID
+		  "Calling handler chunk with %d arguments",
+		  vr->vrid, len);
+	err = lua_pcall(L, len, 0, 0);
 
 	return err;
 }
