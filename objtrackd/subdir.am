@@ -1,0 +1,30 @@
+#
+# objtrackd
+#
+
+if OBJTRACKD
+noinst_LIBRARIES += objtrackd/libobjtrack.a
+sbin_PROGRAMS += objtrackd/objtrackd
+vtysh_scan += $(top_srcdir)/objtrackd/objtrack_vty.c
+man8 += $(MANBUILD)/objtrackd.8
+endif
+
+objtrackd_libobjtrack_a_SOURCES = \
+	objtrackd/objtrack.c \
+	objtrackd/objtrack_memory.c \
+	objtrackd/objtrack_vty.c \
+	objtrackd/objtrack_zebra.c \
+	# end
+
+noinst_HEADERS += \
+	objtrackd/objtrack.h \
+	objtrackd/objtrack_memory.h \
+	objtrackd/objtrack_vty.h \
+	objtrackd/objtrack_zebra.h \
+	# end
+
+objtrackd/objtrack_vty_clippy.c: $(CLIPPY_DEPS)
+objtrackd/objtrack_vty.$(OBJEXT): objtrackd/objtrack_vty_clippy.c
+
+objtrackd_objtrackd_SOURCES = objtrackd/objtrack_main.c
+objtrackd_objtrackd_LDADD = objtrackd/libobjtrack.a lib/libfrr.la @LIBCAP@

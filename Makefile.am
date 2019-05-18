@@ -148,6 +148,7 @@ include bfdd/subdir.am
 include yang/subdir.am
 include yang/libyang_plugins/subdir.am
 include vrrpd/subdir.am
+include objtrackd/subdir.am
 
 include vtysh/subdir.am
 include tests/subdir.am
@@ -219,6 +220,7 @@ EXTRA_DIST += \
 	watchfrr/Makefile \
 	zebra/Makefile \
 	vrrpd/Makefile \
+	objtrackd/Makefile \
 	# end
 
 noinst_HEADERS += defaults.h
