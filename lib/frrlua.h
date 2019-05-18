@@ -25,6 +25,8 @@
 #include "lualib.h"
 #include "lauxlib.h"
 
+#include "prefix.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
