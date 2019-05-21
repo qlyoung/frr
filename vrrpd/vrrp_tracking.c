@@ -654,7 +654,7 @@ static int vrrp_tracking_handle(lua_State *L, struct tracked_object *obj,
 
 	/* Push args */
 	vrrp_tracking_getregtable(L, vr, obj);
-	assert(luaL_getsubtable(L, -1, "args"));
+	luaL_getsubtable(L, -1, "args");
 	int len = luaL_len(L, -1);
 	for (int i = 1; i <= len; i++) {
 		lua_pushinteger(L, i);
