@@ -23,39 +23,13 @@
 #include "lib/frrlua.h"
 #include "lib/hash.h"
 #include "lib/linklist.h"
+#include "lib/objtrack.h"
 
 #include "vrrp.h"
 #include "vrrp_debug.h"
 #include "vrrp_tracking.h"
 
 #define VRRP_LOGPFX "[TRACK] "
-
-/* Object tracking mockup --------------------------------------------------- */
-
-/*
- * Push a new table containing the tracked object fields
- * Push a tracked object as the following Lua table:
- *
- * +---------+--------------------+
- * | key     | value              |
- * +=========+====================+
- * | "id"    | object id (int)    |
- * +---------+--------------------+
- * | "type"  | object type (int)  |
- * +---------+--------------------+
- * | "state" | object state (int) |
- * +---------+--------------------+
- */
-static void objtrack_lua_pushtrackedobject(lua_State *L, const struct tracked_object *obj)
-{
-	lua_newtable(L);
-	lua_pushinteger(L, obj->id);
-	lua_setfield(L, -2, "id");
-	lua_pushinteger(L, obj->type);
-	lua_setfield(L, -2, "type");
-	lua_pushinteger(L, obj->state);
-	lua_setfield(L, -2, "state");
-}
 
 /* Lua VRRP object methods ------------------------------------------------- */
 
@@ -105,12 +79,10 @@ static const luaL_Reg vr_funcs[] = {
  * buflen
  *    Size of buf
  */
-static void vrrp_vrouter_regkey(const struct vrrp_vrouter *vr,
-				struct tracked_object *obj, char *buf,
-				size_t buflen)
+static void vrrp_vrouter_regkey(const struct vrrp_vrouter *vr, const char *name,
+				char *buf, size_t buflen)
 {
-	snprintf(buf, buflen, "%d@%s@%" PRIu8, obj->id, vr->ifp->name,
-		 vr->vrid);
+	snprintf(buf, buflen, "%s@%s@%" PRIu8, name, vr->ifp->name, vr->vrid);
 }
 
 /*
@@ -265,7 +237,7 @@ static struct hash *vrrp_objvr_hash;
 
 struct vrrp_objvr_hash_entry {
 	/* Tracked object */
-	struct tracked_object *obj;
+	const char *objname;
 	/* List of vrouters tracking the object */
 	struct list *tracklist;
 };
@@ -274,7 +246,7 @@ static unsigned int vrrp_objvr_hash_key(const void *obj)
 {
 	const struct vrrp_objvr_hash_entry *e = obj;
 
-	return e->obj->id;
+	return string_hash_make(e->objname);
 }
 
 static bool vrrp_objvr_hash_cmp(const void *val1, const void *val2)
@@ -282,7 +254,7 @@ static bool vrrp_objvr_hash_cmp(const void *val1, const void *val2)
 	const struct vrrp_objvr_hash_entry *e1 = val1;
 	const struct vrrp_objvr_hash_entry *e2 = val2;
 
-	return e1->obj->id == e2->obj->id;
+	return strmatch(e1->objname, e2->objname);
 }
 
 /*
@@ -323,12 +295,7 @@ static void *vrrp_objvr_hash_alloc(void *arg)
 	struct vrrp_objvr_hash_entry *e =
 		XCALLOC(MTYPE_TMP, sizeof(struct vrrp_objvr_hash_entry));
 
-	/*
-	 * XXX: Fixme, cannot copy this as we need the same pointer in order to
-	 * delete it later
-	 */
-	e->obj = XCALLOC(MTYPE_TMP, sizeof(struct tracked_object));
-	memcpy(e->obj, the->obj, sizeof(struct tracked_object));
+	e->objname = XSTRDUP(MTYPE_TMP, the->objname);
 	e->tracklist = list_new();
 
 	return e;
@@ -363,33 +330,34 @@ static struct list *vrrp_tracking_get_objects(struct vrrp_vrouter *vr)
 	return v->tracklist;
 }
 
-static struct list *vrrp_tracking_get_vrs(struct tracked_object *obj)
+static struct list *vrrp_tracking_get_vrs(const char *name)
 {
 	struct vrrp_objvr_hash_entry ovhe, *v;
-	ovhe.obj = obj;
+	ovhe.objname = name;
 
 	v = hash_get(vrrp_objvr_hash, &ovhe, vrrp_objvr_hash_alloc);
 
 	return v->tracklist;
 }
 
-static void vrrp_tracking_add_object(struct vrrp_vrouter *vr, struct tracked_object *obj)
+static void vrrp_tracking_add_object(struct vrrp_vrouter *vr, const char *name)
 {
-	struct list *objvrlist = vrrp_tracking_get_vrs(obj);
+	struct list *objvrlist = vrrp_tracking_get_vrs(name);
 	struct list *vrobjlist = vrrp_tracking_get_objects(vr);
 
 	/* XXX: check for duplicates */
-	listnode_add(vrobjlist, obj);
+	listnode_add(vrobjlist, XSTRDUP(MTYPE_TMP, name));
 	listnode_add(objvrlist, vr);
 }
 
-static void vrrp_tracking_remove_object(struct vrrp_vrouter *vr, struct tracked_object *obj)
+static void vrrp_tracking_remove_object(struct vrrp_vrouter *vr,
+					const char *name)
 {
 	struct vrrp_vrobj_hash_entry vohe = {}, *r1;
 	struct vrrp_objvr_hash_entry ovhe = {}, *r2;
 
 	vohe.vr = vr;
-	ovhe.obj = obj;
+	ovhe.objname = name;
 
 	r1 = hash_lookup(vrrp_vrobj_hash, &vohe);
 	r2 = hash_lookup(vrrp_objvr_hash, &ovhe);
@@ -415,7 +383,7 @@ static void vrrp_tracking_remove_object(struct vrrp_vrouter *vr, struct tracked_
 	assert(found);
 
 	/* XXX: this delete fails cuz obj isn't the same pointer as in the list */
-	listnode_delete(vrobjlist, obj);
+	listnode_delete(vrobjlist, name);
 	listnode_delete(objvrlist, vr);
 
 	/* If this vrouter isn't tracking anymore objects, delete it */
@@ -426,7 +394,7 @@ static void vrrp_tracking_remove_object(struct vrrp_vrouter *vr, struct tracked_
 		hash_release(vrrp_vrobj_hash, &vohe);
 		/* Unset registry table for vrouter */
 		char key[BUFSIZ];
-		vrrp_vrouter_regkey(vr, obj, key, sizeof(key));
+		vrrp_vrouter_regkey(vr, name, key, sizeof(key));
 		lua_pushnil(L);
 		lua_setfield(L, LUA_REGISTRYINDEX, key);
 		zlog_info(VRRP_LOGPFX VRRP_LOGPFX_VRID
@@ -439,7 +407,7 @@ static void vrrp_tracking_remove_object(struct vrrp_vrouter *vr, struct tracked_
 	/* If nobody is tracking this object anymore, delete it */
 	if (objvrlist->count == 0) {
 		struct vrrp_objvr_hash_entry ovhe = {};
-		ovhe.obj = obj;
+		ovhe.objname = name;
 		hash_release(vrrp_objvr_hash, &ovhe);
 		list_delete(&vrobjlist);
 	}
@@ -456,11 +424,11 @@ static void vrrp_tracking_remove_object(struct vrrp_vrouter *vr, struct tracked_
  *    Tracked object
  */
 static bool vrrp_tracking_getregtable(lua_State *L, struct vrrp_vrouter *vr,
-				      struct tracked_object *obj)
+				      const char *name)
 {
 	char key[BUFSIZ];
 
-	vrrp_vrouter_regkey(vr, obj, key, sizeof(key));
+	vrrp_vrouter_regkey(vr, name, key, sizeof(key));
 	bool created = !luaL_getsubtable(L, LUA_REGISTRYINDEX, key);
 
 	if (created)
@@ -526,13 +494,12 @@ const char *vrrp_tracking_builtin_actions[] = {
  *    If 'at' is VRRP_TRACKING_ACTION_SCRIPT, this is the path to the script.
  *    Otherwise it is the argument to the specified builtin.
  */
-static void vrrp_tracking_set_action(struct vrrp_vrouter *vr,
-				     struct tracked_object *obj,
+static void vrrp_tracking_set_action(struct vrrp_vrouter *vr, const char *name,
 				     enum vrrp_tracking_actiontype at,
 				     const void *arg)
 {
 	/* Get or create registry table for this (obj, vrouter) */
-	vrrp_tracking_getregtable(L, vr, obj);
+	vrrp_tracking_getregtable(L, vr, name);
 	assert(lua_istable(L, -1));
 
 	/* Set script as "action" field */
@@ -577,13 +544,13 @@ static void vrrp_tracking_set_action(struct vrrp_vrouter *vr,
  * vr
  *    Virtual router
  */
-static int vrrp_tracking_handle(lua_State *L, struct tracked_object *obj,
+static int vrrp_tracking_handle(lua_State *L, struct object *obj,
 				struct vrrp_vrouter *vr)
 {
 	int err;
 
 	/* Get regsubtable for this vrouter */
-	bool created = vrrp_tracking_getregtable(L, vr, obj);
+	bool created = vrrp_tracking_getregtable(L, vr, obj->name);
 	assert(!created);
 
 	/* Get action */
@@ -637,14 +604,8 @@ static int vrrp_tracking_handle(lua_State *L, struct tracked_object *obj,
 
 		/* Add 'obj' to the environment */
 		zlog_debug(VRRP_LOGPFX "pushing tracked_object");
-		objtrack_lua_pushtrackedobject(L, obj);
+		objtrack_pushobject(L, obj);
 		lua_setfield(L, -2, "obj");
-
-		/* Add state constants to the environment */
-		lua_pushinteger(L, OBJ_UP);
-		lua_setfield(L, -2, "OBJ_UP");
-		lua_pushinteger(L, OBJ_DOWN);
-		lua_setfield(L, -2, "OBJ_DOWN");
 	}
 	const char *uvname = lua_setupvalue(L, -2, 1);
 
@@ -653,7 +614,7 @@ static int vrrp_tracking_handle(lua_State *L, struct tracked_object *obj,
 	assert(lua_isfunction(L, -1));
 
 	/* Push args */
-	vrrp_tracking_getregtable(L, vr, obj);
+	vrrp_tracking_getregtable(L, vr, obj->name);
 	luaL_getsubtable(L, -1, "args");
 	int len = luaL_len(L, -1);
 	for (int i = 1; i <= len; i++) {
@@ -685,7 +646,7 @@ static int vrrp_tracking_handle(lua_State *L, struct tracked_object *obj,
 
 /* Tracking API ------------------------------------------------------------ */
 
-void vrrp_tracking_event(struct tracked_object *obj)
+void vrrp_tracking_event(struct object *obj)
 {
 	struct listnode *ln;
 	struct vrrp_vrouter *vr;
@@ -693,7 +654,7 @@ void vrrp_tracking_event(struct tracked_object *obj)
 	int err;
 	const char *errstring;
 
-	tracklist = vrrp_tracking_get_vrs(obj);
+	tracklist = vrrp_tracking_get_vrs(obj->name);
 
 	for (ALL_LIST_ELEMENTS_RO(tracklist, ln, vr)) {
 		err = vrrp_tracking_handle(L, obj, vr);
@@ -718,21 +679,32 @@ void vrrp_tracking_event(struct tracked_object *obj)
 	}
 }
 
-void vrrp_track_object(struct vrrp_vrouter *vr, struct tracked_object *obj,
+void vrrp_track_object(struct vrrp_vrouter *vr, const char *name,
 		       enum vrrp_tracking_actiontype actiontype,
 		       const void *actionarg)
 {
-	vrrp_tracking_add_object(vr, obj);
-	vrrp_tracking_set_action(vr, obj, actiontype, actionarg);
+	vrrp_tracking_add_object(vr, name);
+	vrrp_tracking_set_action(vr, name, actiontype, actionarg);
+
+	objtrack_track(name, vrrp_tracking_event);
+
+	objtrack_start(master, 1000);
 }
 
-void vrrp_untrack_object(struct vrrp_vrouter *vr, struct tracked_object *obj)
+void vrrp_untrack_object(struct vrrp_vrouter *vr, const char *name)
 {
-	vrrp_tracking_remove_object(vr, obj);
+	vrrp_tracking_remove_object(vr, name);
+
+	objtrack_track(name, NULL);
+
+	if (vrrp_vrobj_hash->count == 0)
+		objtrack_stop();
 }
 
 void vrrp_tracking_init(char *script)
 {
+	objtrack_init();
+
 	vrrp_objvr_hash = hash_create(vrrp_objvr_hash_key, vrrp_objvr_hash_cmp,
 				      "VRRP reverse object tracking table");
 	vrrp_vrobj_hash = hash_create(vrrp_vrobj_hash_key, vrrp_vrobj_hash_cmp,
