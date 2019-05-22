@@ -56,6 +56,7 @@ lib_libfrr_la_SOURCES = \
 	lib/northbound.c \
 	lib/northbound_cli.c \
 	lib/northbound_db.c \
+	lib/objtrack.c \
 	lib/openbsd-tree.c \
 	lib/pid_output.c \
 	lib/plist.c \
@@ -185,6 +186,7 @@ pkginclude_HEADERS += \
 	lib/northbound_cli.h \
 	lib/northbound_db.h \
 	lib/ns.h \
+	lib/objtrack.h \
 	lib/openbsd-queue.h \
 	lib/openbsd-tree.h \
 	lib/plist.h \
