@@ -348,12 +348,12 @@ DEFPY(vrrp_default,
 
 DEFPY(vrrp_track,
       vrrp_track_cmd,
-      "[no] vrrp (1-255)$vrid track (1-4096)$objid <decrement (1-254)$dec|call LUASCRIPT>",
+      "[no] vrrp (1-255)$vrid track NAME$objid <decrement (1-254)$dec|call LUASCRIPT>",
       NO_STR
       VRRP_STR
       VRRP_VRID_STR
       "Configure object tracking\n"
-      "Object ID to track\n"
+      "Name of object ID to track\n"
       "Decrement router priority when object is down\n"
       "Amount to decrement priority\n"
       "Call Lua script to handle tracking events\n"
@@ -364,12 +364,6 @@ DEFPY(vrrp_track,
 	struct vrrp_vrouter *vr;
 
 	VROUTER_GET_VTY(vty, ifp, vrid, vr);
-
-	struct tracked_object obj = {
-		.id = objid,
-		.type = TRACKED_INTERFACE,
-		.state = OBJ_UP,
-	};
 
 	enum vrrp_tracking_actiontype actiontype = 0;
 	const void *actionarg = NULL;
@@ -384,16 +378,16 @@ DEFPY(vrrp_track,
 	}
 
 	if (!no)
-		vrrp_track_object(vr, &obj, actiontype, actionarg);
+		vrrp_track_object(vr, objid, actiontype, actionarg);
 	else
-		vrrp_untrack_object(vr, &obj);
+		vrrp_untrack_object(vr, objid);
 
 	return CMD_SUCCESS;
 }
 
 DEFPY(vrrp_track_event,
       vrrp_track_event_cmd,
-      "[no] vrrp (1-255)$vrid track (1-4096)$objid event <down|up>$ev",
+      "[no] vrrp (1-255)$vrid track NAME$objid event <down|up>$ev",
       NO_STR
       VRRP_STR
       VRRP_VRID_STR
@@ -409,16 +403,21 @@ DEFPY(vrrp_track_event,
 
 	VROUTER_GET_VTY(vty, ifp, vrid, vr);
 
-	enum tracked_object_state state = strmatch(ev, "down") ? OBJ_DOWN
-							       : OBJ_UP;
+	struct object *obj = objtrack_lookup(objid);
 
-	struct tracked_object obj = {
-		.id = objid,
-		.type = TRACKED_INTERFACE,
-		.state = state,
-	};
+	struct object *new = XCALLOC(MTYPE_TMP, sizeof(struct object));
 
-	vrrp_tracking_event(&obj);
+	if (obj)
+		memcpy(new, obj, sizeof(*new));
+
+	if (strmatch(ev, "down")) {
+		strlcpy(new->state, "DOWN", sizeof(new->state));
+	}
+	else {
+		strlcpy(new->state, "UP", sizeof(new->state));
+	}
+
+	vrrp_tracking_event(new);
 
 	return CMD_SUCCESS;
 }

@@ -24,27 +24,7 @@
 
 #include "vrrp.h"
 #include "lib/if.h"
-
-/* Prototype obj tracking types --------------------------------------------- */
-
-enum tracked_object_type {
-	TRACKED_INTERFACE,
-	TRACKED_ROUTE,
-	TRACKED_IPSLA,
-};
-
-enum tracked_object_state {
-	OBJ_DOWN,
-	OBJ_UP
-};
-
-struct tracked_object {
-	int id;
-	enum tracked_object_type type;
-	enum tracked_object_state state;
-};
-
-/* VRRP tracking ------------------------------------------------------------ */
+#include "lib/objtrack.h"
 
 struct vrrp_tracking {
 	struct vrrp_vrouter *vr;
@@ -80,8 +60,9 @@ void vrrp_tracking_init(char *script);
  * action
  *    Either a Lua chunk defining the function 'vrrp_tracking_update'.
  */
-void vrrp_track_object(struct vrrp_vrouter *vr, struct tracked_object *obj,
-		       enum vrrp_tracking_actiontype type, const void *actionarg);
+void vrrp_track_object(struct vrrp_vrouter *vr, const char *name,
+		       enum vrrp_tracking_actiontype type,
+		       const void *actionarg);
 
 /*
  * Make a virtual router stop tracking an object.
@@ -92,7 +73,7 @@ void vrrp_track_object(struct vrrp_vrouter *vr, struct tracked_object *obj,
  * obj
  *    Object to track
  */
-void vrrp_untrack_object(struct vrrp_vrouter *vr, struct tracked_object *obj);
+void vrrp_untrack_object(struct vrrp_vrouter *vr, const char *name);
 
 /*
  * Event handler for object tracking. Call this function with the object that
@@ -102,6 +83,6 @@ void vrrp_untrack_object(struct vrrp_vrouter *vr, struct tracked_object *obj);
  * obj
  *    Object which changed tracking state
  */
-void vrrp_tracking_event(struct tracked_object *obj);
+void vrrp_tracking_event(struct object *obj);
 
 #endif /* __VRRP_TRACKING_H__ */
