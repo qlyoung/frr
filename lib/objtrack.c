@@ -47,11 +47,8 @@ struct hash *objhash;
 static unsigned int objhash_key(const void *data)
 {
 	const struct object *obj = data;
-	char buf[strlen(obj->type) + 1 + strlen(obj->name) + 1];
 
-	snprintf(buf, sizeof(buf), "%s@%s", obj->type, obj->name);
-
-	return string_hash_make(buf);
+	return string_hash_make(obj->name);
 }
 
 static bool objhash_cmp(const void *data1, const void *data2)
@@ -59,8 +56,7 @@ static bool objhash_cmp(const void *data1, const void *data2)
 	const struct object *obj1 = data1;
 	const struct object *obj2 = data2;
 
-	return strmatch(obj1->type, obj2->type)
-	       && strmatch(obj1->name, obj2->name);
+	return strmatch(obj1->name, obj2->name);
 }
 
 static void *objhash_alloc(void *data)
@@ -70,7 +66,9 @@ static void *objhash_alloc(void *data)
 	struct object *newobj = XCALLOC(MTYPE_TMP, sizeof(struct object));
 	memcpy(newobj, obj, sizeof(struct object));
 
-	zlog_warn(OBJTRACK_LOGPFX "Created new object: %s@%s", obj->type, obj->name);
+	zlog_warn(OBJTRACK_LOGPFX
+		  "Created new object: %s (type '%s' | state '%s')",
+		  obj->name, obj->type, obj->state);
 
 	return newobj;
 }
@@ -79,6 +77,8 @@ static void objtrack_update_objhash(void)
 {
 	/* Copy each table element locally */
 	struct object obj = {};
+	struct object *o;
+	const char *name, *type, *state;
 
 	int len = luaL_len(L, -1);
 	for (int i = 1; i <= len; i++) {
@@ -87,26 +87,37 @@ static void objtrack_update_objhash(void)
 		lua_getfield(L, -1, "name");
 		lua_getfield(L, -2, "type");
 		lua_getfield(L, -3, "state");
-		const char *name = lua_tostring(L, -3);
-		const char *type = lua_tostring(L, -2);
-		const char *state = lua_tostring(L, -1);
+		name = lua_tostring(L, -3);
+		type = lua_tostring(L, -2);
+		state = lua_tostring(L, -1);
 		lua_pop(L, 4);
 
-		strlcpy(obj.type, type, sizeof(obj.type));
 		strlcpy(obj.name, name, sizeof(obj.name));
 
-		struct object *o = hash_get(objhash, &obj, &objhash_alloc);
+		o = hash_get(objhash, &obj, &objhash_alloc);
 
-		zlog_warn(OBJTRACK_LOGPFX "Found object: %s@%s", o->type,
-			  o->name);
+		zlog_warn(OBJTRACK_LOGPFX "Updating object '%s' (type '%s')",
+			  o->name, o->type);
 
+		zlog_warn(OBJTRACK_LOGPFX "Old type: %s", o->type);
+		zlog_warn(OBJTRACK_LOGPFX "New type: %s", type);
 		zlog_warn(OBJTRACK_LOGPFX "Old state: %s", o->state);
 		zlog_warn(OBJTRACK_LOGPFX "New state: %s", state);
 
+		if (!strmatch(o->type, type)) {
+			zlog_warn(
+				OBJTRACK_LOGPFX
+				"Type of object '%s' changed from '%s' to '%s'; this is usually not good",
+				o->name, o->type, type);
+			strlcpy(o->type, type, sizeof(o->type));
+		}
+
 		if (!strmatch(o->state, state)) {
 			strlcpy(o->state, state, sizeof(o->state));
-			zlog_warn(OBJTRACK_LOGPFX
-				  "State changed, calling handler %p", o->cb);
+			zlog_warn(
+				OBJTRACK_LOGPFX
+				"State of object '%s' changed, calling handler %p",
+				o->name, o->cb);
 			if (o->cb)
 				o->cb(o);
 		}
@@ -215,16 +226,19 @@ struct object *objtrack_lookup(const char *name)
 	struct object obj = {};
 
 	strlcpy(obj.name, name, sizeof(obj.name));
-	strlcpy(obj.type, "interface", sizeof(obj.type));
 
 	return hash_lookup(objhash, &obj);
 }
 
 void objtrack_track(const char *name, void (*cb)(struct object *))
 {
-	struct object *obj = objtrack_lookup(name);
+	struct object obj = {};
+	struct object *v;
 
-	obj->cb = cb;
+	strlcpy(obj.name, name, sizeof(obj.name));
+	v = hash_get(objhash, &obj, objhash_alloc);
+
+	v->cb = cb;
 }
 
 void objtrack_pushobject(lua_State *L, const struct object *obj)
