@@ -13,6 +13,7 @@ Build-Depends:
  flex,
  gawk,
  install-info,
+ liblua5.3-dev,
  libc-ares-dev,
  libcap-dev,
  libjson-c-dev | libjson0-dev,
