@@ -42,6 +42,7 @@
 #include "northbound_db.h"
 #include "debug.h"
 #include "frrcu.h"
+#include "objtrack.h"
 
 DEFINE_HOOK(frr_late_init, (struct thread_master * tm), (tm))
 DEFINE_KOOH(frr_early_fini, (), ())
@@ -684,6 +685,10 @@ struct thread_master *frr_init(void)
 	log_ref_init();
 	log_ref_vty_init();
 	lib_error_init();
+
+	objtrack_init();
+
+	objtrack_start(master, 1000);
 
 	yang_init();
 

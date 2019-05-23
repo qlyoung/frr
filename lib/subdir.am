@@ -59,6 +59,7 @@ lib_libfrr_la_SOURCES = \
 	lib/northbound_cli.c \
 	lib/northbound_db.c \
 	lib/ntop.c \
+	lib/objtrack.c \
 	lib/openbsd-tree.c \
 	lib/pid_output.c \
 	lib/plist.c \
@@ -138,6 +139,8 @@ lib/vty_clippy.c: $(CLIPPY_DEPS)
 lib/vty.lo: lib/vty_clippy.c
 lib/log_vty_clippy.c: $(CLIPPY_DEPS)
 lib/log_vty.lo: lib/log_vty_clippy.c
+lib/objtrack_clippy.c: $(CLIPPY_DEPS)
+lib/objtrack.lo: lib/objtrack_clippy.c
 
 pkginclude_HEADERS += \
 	lib/agg_table.h \
@@ -196,6 +199,7 @@ pkginclude_HEADERS += \
 	lib/northbound_cli.h \
 	lib/northbound_db.h \
 	lib/ns.h \
+	lib/objtrack.h \
 	lib/openbsd-queue.h \
 	lib/openbsd-tree.h \
 	lib/plist.h \
