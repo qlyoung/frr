@@ -480,13 +480,17 @@ static bool vrrp_tracking_getregtable(lua_State *L, struct vrrp_vrouter *vr,
 const char *vrrp_tracking_builtin_actions[] = {
 	[VRRP_TRACKING_ACTION_DECREMENT] = "\
 	prio = ... \
-	if (obj.state == OBJ_DOWN) then\
+	if (obj.state == \"DOWN\") then\
 	    vr:set_priority(vr.priority - prio) \
+	else if (obj.state == \"UP\") then \
+	    vr:set_priority(vr.priority + prio) \
 	end",
 	[VRRP_TRACKING_ACTION_INCREMENT] = "\
 	prio = ... \
-	if (obj.state == OBJ_DOWN) then\
+	if (obj.state == \"DOWN\") then\
 	    vr:set_priority(vr.priority + prio) \
+	else if (obj.state == \"UP\") then \
+	    vr:set_priority(vr.priority - prio) \
 	end",
 };
 
