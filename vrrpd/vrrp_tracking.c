@@ -344,10 +344,21 @@ static void vrrp_tracking_add_object(struct vrrp_vrouter *vr, const char *name)
 {
 	struct list *objvrlist = vrrp_tracking_get_vrs(name);
 	struct list *vrobjlist = vrrp_tracking_get_objects(vr);
+	struct listnode *ln;
 
-	/* XXX: check for duplicates */
-	listnode_add(vrobjlist, XSTRDUP(MTYPE_TMP, name));
-	listnode_add(objvrlist, vr);
+	const char *ename;
+	bool exists = false;
+
+	for (ALL_LIST_ELEMENTS_RO(vrobjlist, ln, ename)) {
+		exists = strmatch(ename, name);
+		if (exists)
+			break;
+	}
+
+	if (!exists) {
+		listnode_add(vrobjlist, XSTRDUP(MTYPE_TMP, name));
+		listnode_add(objvrlist, vr);
+	}
 }
 
 static void vrrp_tracking_remove_object(struct vrrp_vrouter *vr,
@@ -373,17 +384,24 @@ static void vrrp_tracking_remove_object(struct vrrp_vrouter *vr,
 
 	/* Consistency check: make sure our reverse mapping is present */
 	bool found = false;
-	struct listnode *ln;
+	struct listnode *ln, *nn;
 	struct vrrp_vrouter *vr2;
-	for (ALL_LIST_ELEMENTS_RO(objvrlist, ln, vr2))
-		if (vr == vr2) {
-			found = true;
+	for (ALL_LIST_ELEMENTS_RO(objvrlist, ln, vr2)) {
+		found = (vr == vr2);
+		if (found)
 			break;
-		}
+	}
 	assert(found);
 
-	/* XXX: this delete fails cuz obj isn't the same pointer as in the list */
-	listnode_delete(vrobjlist, name);
+	char *ename;
+
+	for (ALL_LIST_ELEMENTS(vrobjlist, ln, nn, ename)) {
+		if (strmatch(name, ename)) {
+			list_delete_node(vrobjlist, nn);
+			XFREE(MTYPE_TMP, ename);
+			break;
+		}
+	}
 	listnode_delete(objvrlist, vr);
 
 	/* If this vrouter isn't tracking anymore objects, delete it */
