@@ -2390,6 +2390,17 @@ DEFUN (vtysh_show_debugging_hashtable,
 			       "Hashtable statistics for %s:\n");
 }
 
+DEFUN(vtysh_show_tracking_objects,
+      vtysh_show_tracking_objects_cmd,
+      "show tracking objects",
+      SHOW_STR
+      "Object tracking\n"
+      "Show tracked objects\n")
+{
+	return show_per_daemon("do show tracking objects\n",
+			       "Tracked objects for %s:\n");
+}
+
 DEFUN (vtysh_show_error_code,
        vtysh_show_error_code_cmd,
        "show error <(1-4294967296)|all> [json]",
@@ -3975,6 +3986,7 @@ void vtysh_init_vty(void)
 	install_element(VIEW_NODE, &vtysh_show_work_queues_daemon_cmd);
 	install_element(VIEW_NODE, &vtysh_show_thread_cmd);
 	install_element(VIEW_NODE, &vtysh_show_poll_cmd);
+	install_element(VIEW_NODE, &vtysh_show_tracking_objects_cmd);
 
 	/* Logging */
 	install_element(VIEW_NODE, &vtysh_show_logging_cmd);
