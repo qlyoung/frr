@@ -255,14 +255,6 @@ elif test "x${enable_dev_build}" = "xyes"; then
       AC_C_FLAG([-g3])
       AC_C_FLAG([-O0])
    fi
-   if test "x${enable_lua}" = "xyes"; then
-      AX_PROG_LUA([5.3])
-      AX_LUA_HEADERS
-      AX_LUA_LIBS([
-         AC_DEFINE([HAVE_LUA], [1], [Have support for Lua interpreter])
-         LIBS="$LIBS $LUA_LIB"
-      ])
-   fi
 else
    if test "x${enable_lua}" = "xyes"; then
       AC_MSG_ERROR([Lua is not meant to be built/used outside of development at this time])
@@ -273,6 +265,14 @@ else
    fi
 fi
 AM_CONDITIONAL([DEV_BUILD], [test "x$enable_dev_build" = "xyes"])
+
+dnl link lua
+AX_PROG_LUA([5.3])
+AX_LUA_HEADERS
+AX_LUA_LIBS([
+   AC_DEFINE([HAVE_LUA], [1], [Have support for Lua 5.3])
+   LIBS="$LIBS $LUA_LIB"
+])
 
 dnl always want these CFLAGS
 AC_C_FLAG([-fno-omit-frame-pointer])
