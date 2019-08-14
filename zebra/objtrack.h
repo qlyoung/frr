@@ -29,6 +29,7 @@
 extern struct hash *objhash;
 
 struct object {
+	int id;
 	char type[64];
 	char name[64];
 	char state[32];
@@ -85,7 +86,7 @@ void objtrack_pushobject_name(lua_State *L, const char *name);
  * cb
  *    Function to call when the object state changes
  */
-void objtrack_track(const char *name, void (*cb)(struct object *));
+void objtrack_track(const char *name, const char *type, int id);
 
 /*
  * Remove callback function bound to object.
@@ -110,10 +111,5 @@ void objtrack_start(struct thread_master *master, long interval);
  * Stop running object tracking.
  */
 void objtrack_stop(void);
-
-/*
- * Initialize object tracking
- */
-void objtrack_init(void);
 
 #endif /* __OBJTRACK_H__ */

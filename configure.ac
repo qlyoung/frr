@@ -2189,6 +2189,7 @@ AM_CONDITIONAL([RPKI], [test "x$RPKI" = "xtrue"])
 AM_CONDITIONAL([SNMP], [test "x$SNMP_METHOD" = "xagentx"])
 AM_CONDITIONAL([IRDP], [$IRDP])
 AM_CONDITIONAL([FPM], [test "x$enable_fpm" = "xyes"])
+AM_CONDITIONAL([OBJTRACK], [test "x$enable_objtrack" = "xyes"])
 AM_CONDITIONAL([HAVE_PROTOBUF], [test "x$enable_protobuf" = "xyes"])
 dnl daemons
 AM_CONDITIONAL([VTYSH], [test "x$VTYSH" = "xvtysh"])

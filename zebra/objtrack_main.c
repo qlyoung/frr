@@ -20,6 +20,8 @@
 #include <zebra.h>
 #include <dirent.h>
 
+#include "libfrr.h"
+#include "version.h"
 #include "log.h"
 #include "frrlua.h"
 #include "frrstr.h"
@@ -31,10 +33,6 @@
 #include "command.h"
 #include "frr_pthread.h"
 
-#ifndef VTYSH_EXTRACT_PL
-#include "objtrack_clippy.c"
-#endif
-
 #include "objtrack.h"
 
 #define OBJTRACK_STR "Object tracking\n"
@@ -45,6 +43,9 @@ char luadir[MAXPATHLEN];
 
 /* Lua state used for running tracking scripts */
 struct lua_State *L;
+
+/* Thread master */
+struct thread_master *m;
 
 /* Object tracking task, if any */
 struct thread *t_objtrack;
@@ -125,6 +126,7 @@ static void objtrack_update_objhash(void)
 		lua_pop(L, 4);
 
 		strlcpy(obj.name, name, sizeof(obj.name));
+		strlcpy(obj.type, type, sizeof(obj.type));
 
 		o = hash_get(objhash, &obj, &objhash_alloc);
 
@@ -306,12 +308,14 @@ struct object *objtrack_lookup(const char *name)
 	return result;
 }
 
-void objtrack_track(const char *name, void (*cb)(struct object *))
+void objtrack_track(const char *name, const char *type, int id)
 {
 	struct object obj = {};
 	struct object *v;
 
 	strlcpy(obj.name, name, sizeof(obj.name));
+	strlcpy(obj.type, type, sizeof(obj.type));
+	obj.id = id;
 
 	pthread_mutex_lock(&objhash_mtx);
 	{
@@ -319,7 +323,7 @@ void objtrack_track(const char *name, void (*cb)(struct object *))
 	}
 	pthread_mutex_unlock(&objhash_mtx);
 
-	v->cb = cb;
+	v->id = id;
 }
 
 void objtrack_pushobject(lua_State *L, const struct object *obj)
@@ -341,7 +345,7 @@ void objtrack_pushobject_name(lua_State *L, const char *name)
 		objtrack_pushobject(L, val);
 }
 
-DEFPY(objtrack_show_tracking_objects,
+DEFUN(objtrack_show_tracking_objects,
       objtrack_show_tracking_objects_cmd,
       "show tracking objects",
       SHOW_STR
@@ -355,10 +359,10 @@ DEFPY(objtrack_show_tracking_objects,
 
 	struct ttable *tt = ttable_new(&ttable_styles[TTSTYLE_BLANK]);
 
-	ttable_add_row(tt, "%s|%s|%s", "Type", "Name", "State");
+	ttable_add_row(tt, "%s|%s|%s|%s", "ID", "Type", "Name", "State");
 
 	for (ALL_LIST_ELEMENTS_RO(objects, ln, obj)) {
-		ttable_add_row(tt, "%s|%s|%s", obj->type, obj->name,
+		ttable_add_row(tt, "%d|%s|%s|%s", obj->id, obj->type, obj->name,
 			       obj->state);
 	}
 
@@ -371,6 +375,25 @@ DEFPY(objtrack_show_tracking_objects,
 
 	ttable_del(tt);
 	list_delete(&objects);
+
+	return CMD_SUCCESS;
+}
+
+DEFUN(objtrack_track_object,
+      objtrack_track_object_cmd,
+      "track (1-1024) TYPE NAME",
+      OBJTRACK_STR
+      "Identifier to assign to object\n"
+      "Type of object\n"
+      "Name of object\n")
+{
+	int id = strtoul(argv[1]->arg, NULL, 10);
+	const char *type= argv[2]->arg;
+	const char *name = argv[3]->arg;
+
+	objtrack_track(name, type, id);
+
+	objtrack_start(m, 1000);
 
 	return CMD_SUCCESS;
 }
@@ -393,20 +416,39 @@ void objtrack_stop()
 	THREAD_OFF(t_objtrack);
 }
 
-void objtrack_init()
+static int objtrack_finish()
 {
+	return 0;
+}
+
+static int objtrack_init(struct thread_master *master)
+{
+	hook_register(frr_early_fini, objtrack_finish);
+
+	m = master;
+
 	L = luaL_newstate();
-
 	luaL_openlibs(L);
-
-	frr_pthread_init();
-
+	
 	strlcpy(luadir, "/etc/frr/lua", sizeof(luadir));
 	zlog_warn(OBJTRACK_LOGPFX "Using script directory '%s'", luadir);
 
 	install_element(VIEW_NODE, &objtrack_show_tracking_objects_cmd);
+	install_element(CONFIG_NODE, &objtrack_track_object_cmd);
 
 	objhash = hash_create(objhash_key, objhash_cmp, "Object hash");
 
 	zlog_warn(OBJTRACK_LOGPFX "Initialized object tracking");
+
+	return 0;
 }
+
+static int objtrack_module_init(void)
+{
+	hook_register(frr_late_init, objtrack_init);
+	return 0;
+}
+
+FRR_MODULE_SETUP(.name = "zebra_objtrack", .version = FRR_VERSION,
+		 .description = "zebra object tracking module",
+		 .init = objtrack_module_init, )
