@@ -207,7 +207,9 @@ int pim_pim_packet(struct interface *ifp, uint8_t *buf, size_t len)
 						ifp->name, pim_checksum,
 						checksum);
 
+#ifndef FUZZING
 				return -1;
+#endif
 			}
 		}
 	} else {
@@ -218,7 +220,9 @@ int pim_pim_packet(struct interface *ifp, uint8_t *buf, size_t len)
 					"Ignoring PIM pkt from %s with invalid checksum: received=%x calculated=%x",
 					ifp->name, pim_checksum, checksum);
 
+#ifndef FUZZING
 			return -1;
+#endif
 		}
 	}
 
