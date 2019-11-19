@@ -26,6 +26,7 @@
 extern "C" {
 #endif
 
+#define FUZZING 1
 #ifdef FUZZING
 #undef HAVE_MALLOC_USABLE_SIZE
 #undef HAVE_MALLOC_SIZE
