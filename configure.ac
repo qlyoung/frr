@@ -347,7 +347,7 @@ AC_C_FLAG([-fms-extensions], [
 ])
 AC_C_FLAG([-fno-omit-frame-pointer])
 AC_C_FLAG([-funwind-tables])
-AC_C_FLAG([-Wall])
+#AC_C_FLAG([-Wall])
 AC_C_FLAG([-Wextra])
 AC_C_FLAG([-Wstrict-prototypes])
 AC_C_FLAG([-Wmissing-prototypes])

@@ -20,6 +20,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#define FUZZING 1
+
 #include <zebra.h>
 #include <sys/time.h>
 
@@ -718,6 +720,7 @@ void bgp_open_send(struct peer *peer)
  * @param peer
  * @return 0
  */
+#ifndef FUZZING
 static void bgp_write_notify(struct peer *peer)
 {
 	int ret, val;
@@ -777,6 +780,7 @@ static void bgp_write_notify(struct peer *peer)
 
 	stream_free(s);
 }
+#endif
 
 /*
  * Encapsulate an original BGP CEASE Notification into Hard Reset
@@ -1018,7 +1022,9 @@ static void bgp_notify_send_internal(struct peer *peer, uint8_t code,
 	BGP_GR_ROUTER_DETECT_AND_SEND_CAPABILITY_TO_ZEBRA(peer->bgp,
 							  peer->bgp->peer);
 
+#ifndef FUZZING
 	bgp_write_notify(peer);
+#endif
 }
 
 /*
@@ -2840,9 +2846,11 @@ void bgp_process_packet(struct thread *thread)
 		bgp_size_t size;
 		char notify_data_length[2];
 
+#ifndef FUZZING
 		frr_with_mutex (&peer->io_mtx) {
 			peer->curr = stream_fifo_pop(peer->ibuf);
 		}
+#endif
 
 		if (peer->curr == NULL) // no packets to process, hmm...
 			return;
@@ -2855,7 +2863,9 @@ void bgp_process_packet(struct thread *thread)
 		size = stream_getw(peer->curr);
 		type = stream_getc(peer->curr);
 
+#ifndef FUZZING
 		hook_call(bgp_packet_dump, peer, type, size, peer->curr);
+#endif
 
 		/* adjust size to exclude the marker + length + type */
 		size -= BGP_HEADER_SIZE;
@@ -2944,6 +2954,9 @@ void bgp_process_packet(struct thread *thread)
 			 */
 			assert (!"Message of invalid type received during input processing");
 		}
+#ifdef FUZZING
+		return 0;
+#endif
 
 		/* delete processed packet */
 		stream_free(peer->curr);
