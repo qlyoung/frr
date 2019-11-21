@@ -1351,6 +1351,7 @@ static int bgp_open_receive(struct peer *peer, bgp_size_t size)
 	if (ret < 0)
 		return BGP_Stop;
 
+#ifndef FUZZING
 	/* Get sockname. */
 	if ((ret = bgp_getsockname(peer)) < 0) {
 		flog_err_sys(EC_LIB_SOCKET,
@@ -1358,6 +1359,7 @@ static int bgp_open_receive(struct peer *peer, bgp_size_t size)
 			     __FUNCTION__, peer->host);
 		return BGP_Stop;
 	}
+#endif
 
 	/* Verify valid local address present based on negotiated
 	 * address-families. */
@@ -1395,7 +1397,9 @@ static int bgp_open_receive(struct peer *peer, bgp_size_t size)
 #endif
 		}
 	}
+#ifndef FUZZING
 	peer->rtt = sockopt_tcp_rtt(peer->fd);
+#endif
 
 	return Receive_OPEN_message;
 }
