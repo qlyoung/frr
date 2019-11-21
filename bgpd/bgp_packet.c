@@ -1705,7 +1705,9 @@ static int bgp_open_receive(struct peer *peer, bgp_size_t size)
 #endif
 		}
 	}
+#ifndef FUZZING
 	peer->rtt = sockopt_tcp_rtt(peer->fd);
+#endif
 
 	return Receive_OPEN_message;
 }
