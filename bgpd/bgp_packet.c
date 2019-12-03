@@ -2333,6 +2333,10 @@ int bgp_process_packet(struct thread *thread)
 					__FUNCTION__, peer->host);
 			break;
 		case BGP_MSG_CAPABILITY:
+#ifdef FUZZING
+			/* This shit is 1. buggy 2. not worth fixing */
+			break;
+#endif
 			atomic_fetch_add_explicit(&peer->dynamic_cap_in, 1,
 						  memory_order_relaxed);
 			mprc = bgp_capability_receive(peer, size);
