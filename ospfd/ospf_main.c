@@ -149,6 +149,33 @@ int main(int argc, char **argv)
 #endif /* SUPPORT_OSPF_API */
 
 	frr_preinit(&ospfd_di, argc, argv);
+
+
+#ifdef FUZZING
+	ospf_master_init(frr_init_fast());
+	ospf_debug_init();
+	ospf_vrf_init();
+
+	access_list_init();
+	prefix_list_init();
+
+	ospf_if_init();
+
+	ospf_vty_init();
+	ospf_vty_show_init();
+	ospf_vty_clear_init();
+
+	ospf_route_map_init();
+	ospf_opaque_init();
+
+	ospf_error_init();
+
+	/* Fuzz here */
+	struct ospf *o = ospf_get_instance(instance);
+
+	exit(0);
+#endif
+
 	frr_opt_add("n:a", longopts,
 		    "  -n, --instance     Set the instance id\n"
 		    "  -a, --apiserver    Enable OSPF apiserver\n");
