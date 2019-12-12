@@ -185,6 +185,8 @@ struct cpu_thread_history {
  */
 #include "lib/xref.h"
 
+#ifndef FUZZING
+
 #define _xref_t_a(addfn, type, m, f, a, v, t)                                  \
 	({                                                                     \
 		static const struct xref_threadsched _xref                     \
@@ -218,6 +220,19 @@ struct cpu_thread_history {
 		XREF_LINK(_xref.xref);                                         \
 		_thread_execute(&_xref, m, f, a, v);                           \
 	}) /* end */
+
+#else /* ifndef FUZZING */
+
+#define thread_add_read(m,f,a,v,t) 0
+#define thread_add_write(m,f,a,v,t) 0
+#define thread_add_timer(m,f,a,v,t) 0
+#define thread_add_timer_msec(m,f,a,v,t) 0
+#define thread_add_timer_tv(m,f,a,v,t) 0
+#define thread_add_event(m,f,a,v,t) 0
+#define thread_execute(m,f,a,v) 0
+#define thread_execute_name(m, f, a, v, n) 0
+
+#endif /* ifndef FUZZING */
 
 /* Prototypes. */
 extern struct thread_master *thread_master_create(const char *);
