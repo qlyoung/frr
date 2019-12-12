@@ -455,8 +455,10 @@ static struct ospf_neighbor *ospf_nbr_add(struct ospf_interface *oi,
 				nbr_nbma->nbr = nbr;
 				nbr->nbr_nbma = nbr_nbma;
 
+#ifndef FUZZING
 				if (nbr_nbma->t_poll)
 					THREAD_OFF(nbr_nbma->t_poll);
+#endif
 
 				nbr->state_change = nbr_nbma->state_change + 1;
 			}
@@ -464,8 +466,10 @@ static struct ospf_neighbor *ospf_nbr_add(struct ospf_interface *oi,
 	}
 
 	/* New nbr, save the crypto sequence number if necessary */
+#ifndef FUZZING
 	if (ntohs(ospfh->auth_type) == OSPF_AUTH_CRYPTOGRAPHIC)
 		nbr->crypt_seqnum = ospfh->u.crypt.crypt_seqnum;
+#endif
 
 	/* Configure BFD if interface has it. */
 	ospf_neighbor_bfd_apply(nbr);
