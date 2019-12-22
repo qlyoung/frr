@@ -1000,12 +1000,16 @@ struct igmp_sock *pim_igmp_sock_add(struct list *igmp_sock_list,
 
 	pim_ifp = ifp->info;
 
+#ifndef FUZZING
 	fd = igmp_sock_open(ifaddr, ifp, pim_ifp->options);
 	if (fd < 0) {
 		zlog_warn("Could not open IGMP socket for %s on %s",
 			  inet_ntoa(ifaddr), ifp->name);
 		return 0;
 	}
+#else
+	fd = 69;
+#endif
 
 	sin.sin_family = AF_INET;
 	sin.sin_addr = ifaddr;
