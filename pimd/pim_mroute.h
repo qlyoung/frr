@@ -148,9 +148,13 @@ typedef struct sioc_sg_req6 pim_sioc_sg_req;
 #endif
 
 
+#include "lib/if.h"
+
 /*
   Above: from <linux/mroute.h>
 */
+int pim_mroute_msg(struct pim_instance *pim, const char *buf, int buf_size,
+		   ifindex_t ifindex);
 
 struct channel_oil;
 struct pim_instance;

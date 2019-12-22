@@ -611,8 +611,8 @@ int pim_mroute_msg_wrvifwhole(int fd, struct interface *ifp, const char *buf,
 }
 
 #if PIM_IPV == 4
-static int process_igmp_packet(struct pim_instance *pim, const char *buf,
-			       size_t buf_size, ifindex_t ifindex)
+int process_igmp_packet(struct pim_instance *pim, const char *buf,
+			size_t buf_size, ifindex_t ifindex)
 {
 	struct interface *ifp;
 	struct pim_interface *pim_ifp;
@@ -929,8 +929,11 @@ int pim_mroute_add_vif(struct interface *ifp, pim_addr ifaddr,
 #endif
 #endif
 
+#ifndef FUZZING
 	err = setsockopt(pim_ifp->pim->mroute_socket, PIM_IPPROTO, MRT_ADD_VIF,
-			 (void *)&vc, sizeof(vc));
+#else
+	err = 0;
+#endif
 	if (err) {
 		zlog_warn(
 			"%s: failure: setsockopt(fd=%d,PIM_IPPROTO,MRT_ADD_VIF,vif_index=%d,ifaddr=%pPAs,flag=%d): errno=%d: %s",
