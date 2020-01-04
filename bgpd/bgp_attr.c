@@ -2568,7 +2568,7 @@ bgp_attr_parse_ret_t bgp_attr_parse(struct peer *peer, struct attr *attr,
 			 * a stack buffer, since they perform bounds checking
 			 * and we are working with untrusted data.
 			 */
-			unsigned char ndata[BGP_MAX_PACKET_SIZE];
+			unsigned char ndata[BGP_PACKET_SIZE(peer)];
 			memset(ndata, 0x00, sizeof(ndata));
 			size_t lfl =
 				CHECK_FLAG(flag, BGP_ATTR_FLAG_EXTLEN) ? 2 : 1;
