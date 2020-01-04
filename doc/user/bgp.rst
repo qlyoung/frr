@@ -424,6 +424,14 @@ Reject routes with AS_SET or AS_CONFED_SET types
 
    This command enables rejection of incoming and outgoing routes having AS_SET or AS_CONFED_SET type.
 
+Extended Message Support for BGP
+--------------------------------
+
+.. index:: [no] bgp extended-message
+.. clicmd:: [no] bgp extended-message
+
+   Extend the maximum message size from 4096 to 65535 bytes for all messages except for OPEN and KEEPALIVE messages.
+
 .. _bgp-route-flap-dampening:
 
 Route Flap Dampening
