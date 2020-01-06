@@ -99,11 +99,13 @@ nhg_connected_tree_root(struct nhg_connected_tree_head *head)
 	return nhg_connected_tree_first(head);
 }
 
-void nhg_connected_tree_del_nhe(struct nhg_connected_tree_head *head,
-				struct nhg_hash_entry *depend)
+struct nhg_hash_entry *
+nhg_connected_tree_del_nhe(struct nhg_connected_tree_head *head,
+			   struct nhg_hash_entry *depend)
 {
 	struct nhg_connected lookup = {};
 	struct nhg_connected *remove = NULL;
+	struct nhg_hash_entry *removed_nhe;
 
 	lookup.nhe = depend;
 
@@ -111,19 +113,39 @@ void nhg_connected_tree_del_nhe(struct nhg_connected_tree_head *head,
 	remove = nhg_connected_tree_find(head, &lookup);
 	remove = nhg_connected_tree_del(head, remove);
 
-	if (remove)
+	if (remove) {
+
+		removed_nhe = remove->nhe;
 		nhg_connected_free(remove);
+		return removed_nhe;
+	}
+
+	return NULL;
 }
 
-void nhg_connected_tree_add_nhe(struct nhg_connected_tree_head *head,
-				struct nhg_hash_entry *depend)
+/* Assuming UNIQUE RB tree. If this changes, assumptions here about
+ * insertion need to change.
+ */
+struct nhg_hash_entry *
+nhg_connected_tree_add_nhe(struct nhg_connected_tree_head *head,
+			   struct nhg_hash_entry *depend)
 {
 	struct nhg_connected *new = NULL;
 
 	new = nhg_connected_new(depend);
 
-	if (new)
-		nhg_connected_tree_add(head, new);
+	/* On success, NULL should be returned from the
+	 * RB code.
+	 */
+	if (new && (nhg_connected_tree_add(head, new) == NULL))
+		return NULL;
+
+	/* If it wasn't successful, it must be a duplciate. The kernel
+	 * does not allow this so free the connected struct.
+	 */
+	nhg_connected_free(new);
+
+	return depend;
 }
 
 static void
@@ -1074,8 +1096,8 @@ done:
 static void depends_add(struct nhg_connected_tree_head *head,
 			struct nhg_hash_entry *depend)
 {
-	nhg_connected_tree_add_nhe(head, depend);
-	zebra_nhg_increment_ref(depend);
+	if (nhg_connected_tree_add_nhe(head, depend) == NULL)
+		zebra_nhg_increment_ref(depend);
 }
 
 static struct nhg_hash_entry *

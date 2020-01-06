@@ -52,9 +52,11 @@ extern bool
 nhg_connected_tree_is_empty(const struct nhg_connected_tree_head *head);
 extern struct nhg_connected *
 nhg_connected_tree_root(struct nhg_connected_tree_head *head);
-extern void nhg_connected_tree_del_nhe(struct nhg_connected_tree_head *head,
-				       struct nhg_hash_entry *nhe);
-extern void nhg_connected_tree_add_nhe(struct nhg_connected_tree_head *head,
-				       struct nhg_hash_entry *nhe);
+extern struct nhg_hash_entry *
+nhg_connected_tree_del_nhe(struct nhg_connected_tree_head *head,
+			   struct nhg_hash_entry *nhe);
+extern struct nhg_hash_entry *
+nhg_connected_tree_add_nhe(struct nhg_connected_tree_head *head,
+			   struct nhg_hash_entry *nhe);
 
 #endif /* __ZEBRA_NHG_PRIVATE_H__ */
