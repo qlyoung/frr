@@ -744,8 +744,22 @@ struct bpacket *subgroup_update_packet(struct update_subgroup *subgrp)
 		addpath_tx_id = adj->addpath_tx_id;
 		path = adv->pathi;
 
-		space_remaining = STREAM_CONCAT_REMAIN(s, snlri, STREAM_SIZE(s))
-				  - BGP_MAX_PACKET_SIZE_OVERFLOW;
+		/* We set subgrp->work to BGP_MAX_EXT_MESSAGE_PACKET_SIZE
+		 * initially (65535 bytes).
+		 * But if we use BGP Extended message capability
+		 * we MUST ensure that stream size is aligned to
+		 * packet size between peers, hence overriding the stream
+		 * size here.
+		 * If BGP Extended message capability is sent and
+		 * received, we use BGP_MAX_EXT_MESSAGE_PACKET_SIZE.
+		 * If the former capability is not set, we use
+		 * BGP_MAX_PACKET_SIZE (4096 bytes).
+		 */
+		space_remaining =
+			STREAM_CONCAT_REMAIN(
+				s, snlri,
+				MIN(BGP_PACKET_SIZE(peer), STREAM_SIZE(s)))
+			- BGP_MAX_PACKET_SIZE_OVERFLOW;
 		space_needed =
 			BGP_NLRI_LENGTH + addpath_overhead
 			+ bgp_packet_mpattr_prefix_size(afi, safi, &rn->p);
@@ -983,8 +997,20 @@ struct bpacket *subgroup_withdraw_packet(struct update_subgroup *subgrp)
 		rn = adv->rn;
 		addpath_tx_id = adj->addpath_tx_id;
 
+		/* We set subgrp->work to BGP_MAX_EXT_MESSAGE_PACKET_SIZE
+		 * initially (65535 bytes).
+		 * But if we use BGP Extended message capability
+		 * we MUST ensure that stream size is aligned to
+		 * packet size between peers, hence overriding the stream
+		 * size here.
+		 * If BGP Extended message capability is sent and
+		 * received, we use BGP_MAX_EXT_MESSAGE_PACKET_SIZE.
+		 * If the former capability is not set, we use
+		 * BGP_MAX_PACKET_SIZE (4096 bytes).
+		 */
 		space_remaining =
-			STREAM_WRITEABLE(s) - BGP_MAX_PACKET_SIZE_OVERFLOW;
+			MIN(STREAM_WRITEABLE(s), BGP_PACKET_SIZE(peer))
+			- BGP_MAX_PACKET_SIZE_OVERFLOW;
 		space_needed =
 			BGP_NLRI_LENGTH + addpath_overhead + BGP_TOTAL_ATTR_LEN
 			+ bgp_packet_mpattr_prefix_size(afi, safi, &rn->p);
@@ -1143,7 +1169,7 @@ void subgroup_default_update_packet(struct update_subgroup *subgrp,
 			   attrstr);
 	}
 
-	s = stream_new(BGP_MAX_PACKET_SIZE);
+	s = stream_new(BGP_PACKET_SIZE(peer));
 
 	/* Make BGP update packet. */
 	bgp_packet_set_marker(s, BGP_MSG_UPDATE);
@@ -1222,7 +1248,7 @@ void subgroup_default_withdraw_packet(struct update_subgroup *subgrp)
 			   prefix2str(&p, buf, sizeof(buf)), tx_id_buf);
 	}
 
-	s = stream_new(BGP_MAX_PACKET_SIZE);
+	s = stream_new(BGP_PACKET_SIZE(peer));
 
 	/* Make BGP update packet. */
 	bgp_packet_set_marker(s, BGP_MSG_UPDATE);
