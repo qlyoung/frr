@@ -52,6 +52,13 @@ DEFINE_HOOK(frr_config_pre, (struct thread_master * tm), (tm));
 DEFINE_HOOK(frr_config_post, (struct thread_master * tm), (tm));
 DEFINE_KOOH(frr_early_fini, (), ());
 DEFINE_KOOH(frr_fini, (), ());
+#if defined(FUZZING) && defined(FUZZING_LIBFUZZER) && !defined(FUZZING_OVERRIDE_LLVMFuzzerTestOneInput)
+int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size);
+
+int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
+	return 0;
+}
+#endif /* lol */
 
 const char frr_sysconfdir[] = SYSCONFDIR;
 char frr_vtydir[256];
