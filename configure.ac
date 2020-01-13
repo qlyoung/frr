@@ -359,11 +359,13 @@ if test "$enable_libfuzzer" = "yes"; then
     AC_MSG_NOTICE([WARNING - libFuzzer only enabled on supported daemons])
     SAN_FLAGS="$SAN_FLAGS -fsanitize=fuzzer-no-link"
     BGPD_SAN_FLAGS="-fsanitize=fuzzer"
+    ZEBRA_SAN_FLAGS="-fsanitize=fuzzer"
     AC_DEFINE([FUZZING_LIBFUZZER], [1], [Compiling and linking with libFuzzer])
   ])
 fi
 AC_SUBST([SAN_FLAGS])
 AC_SUBST([BGPD_SAN_FLAGS])
+AC_SUBST([ZEBRA_SAN_FLAGS])
 
 dnl ----------
 dnl Essentials
