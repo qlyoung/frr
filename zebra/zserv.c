@@ -456,6 +456,9 @@ zread_fail:
 static void zserv_client_event(struct zserv *client,
 			       enum zserv_client_event event)
 {
+#ifdef FUZZING
+	return;
+#endif
 	switch (event) {
 	case ZSERV_CLIENT_READ:
 		thread_add_read(client->pthread->master, zserv_read, client,
@@ -529,6 +532,10 @@ static int zserv_process_messages(struct thread *thread)
 
 int zserv_send_message(struct zserv *client, struct stream *msg)
 {
+#ifdef FUZZING
+	stream_free(msg);
+	return 0;
+#endif
 	frr_with_mutex(&client->obuf_mtx) {
 		stream_fifo_push(client->obuf_fifo, msg);
 	}
@@ -566,7 +573,9 @@ static void zserv_client_free(struct zserv *client)
 	if (client->sock) {
 		unsigned long nroutes;
 
+#ifndef FUZZING
 		close(client->sock);
+#endif
 
 		if (!client->gr_instance_count) {
 			nroutes = rib_score_proto(client->proto,
@@ -591,9 +600,11 @@ static void zserv_client_free(struct zserv *client)
 	if (client->wb)
 		buffer_free(client->wb);
 
+#ifndef FUZZING
 	/* Free buffer mutexes */
 	pthread_mutex_destroy(&client->obuf_mtx);
 	pthread_mutex_destroy(&client->ibuf_mtx);
+#endif
 
 	/* Free bitmaps. */
 	for (afi_t afi = AFI_IP; afi < AFI_MAX; afi++) {
@@ -630,12 +641,15 @@ static void zserv_client_free(struct zserv *client)
 void zserv_close_client(struct zserv *client)
 {
 	/* synchronously stop and join pthread */
+#ifndef FUZZING
 	frr_pthread_stop(client->pthread, NULL);
+#endif
 
 	if (IS_ZEBRA_DEBUG_EVENT)
 		zlog_debug("Closing client '%s'",
 			   zebra_route_string(client->proto));
 
+#ifndef FUZZING
 	thread_cancel_event(zrouter.master, client);
 	THREAD_OFF(client->t_cleanup);
 	THREAD_OFF(client->t_process);
@@ -643,6 +657,7 @@ void zserv_close_client(struct zserv *client)
 	/* destroy pthread */
 	frr_pthread_destroy(client->pthread);
 	client->pthread = NULL;
+#endif
 
 	/* remove from client list */
 	listnode_delete(zrouter.client_list, client);
@@ -691,8 +706,10 @@ struct zserv *zserv_client_create(int sock)
 	client->obuf_fifo = stream_fifo_new();
 	client->ibuf_work = stream_new(stream_size);
 	client->obuf_work = stream_new(stream_size);
+#ifndef FUZZING
 	pthread_mutex_init(&client->ibuf_mtx, NULL);
 	pthread_mutex_init(&client->obuf_mtx, NULL);
+#endif
 	client->wb = buffer_new(0);
 	TAILQ_INIT(&(client->gr_info_queue));
 
@@ -710,6 +727,7 @@ struct zserv *zserv_client_create(int sock)
 	/* Add this client to linked list. */
 	listnode_add(zrouter.client_list, client);
 
+#ifndef FUZZING
 	struct frr_pthread_attr zclient_pthr_attrs = {
 		.start = frr_pthread_attr_default.start,
 		.stop = frr_pthread_attr_default.stop
@@ -720,6 +738,7 @@ struct zserv *zserv_client_create(int sock)
 
 	/* start read loop */
 	zserv_client_event(client, ZSERV_CLIENT_READ);
+#endif
 
 	/* call callbacks */
 	hook_call(zserv_client_connect, client);
@@ -839,6 +858,9 @@ void zserv_start(char *path)
 
 void zserv_event(struct zserv *client, enum zserv_event event)
 {
+#ifdef FUZZING
+	return;
+#endif
 	switch (event) {
 	case ZSERV_ACCEPT:
 		thread_add_read(zrouter.master, zserv_accept, NULL, zsock,
