@@ -360,12 +360,14 @@ if test "$enable_libfuzzer" = "yes"; then
     SAN_FLAGS="$SAN_FLAGS -fsanitize=fuzzer-no-link"
     BGPD_SAN_FLAGS="-fsanitize=fuzzer"
     ZEBRA_SAN_FLAGS="-fsanitize=fuzzer"
+    OSPFD_SAN_FLAGS="-fsanitize=fuzzer"
     AC_DEFINE([FUZZING_LIBFUZZER], [1], [Compiling and linking with libFuzzer])
   ])
 fi
 AC_SUBST([SAN_FLAGS])
 AC_SUBST([BGPD_SAN_FLAGS])
 AC_SUBST([ZEBRA_SAN_FLAGS])
+AC_SUBST([OSPFD_SAN_FLAGS])
 
 dnl ----------
 dnl Essentials
