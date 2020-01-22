@@ -292,9 +292,11 @@ ssize_t vrrp_pkt_parse_datagram(int family, int version, struct msghdr *m,
 	/* Checksum check */
 	uint16_t chksum = vrrp_pkt_checksum(*pkt, pktsize, src);
 
+#ifndef FUZZING
 	VRRP_PKT_VCHECK((*pkt)->hdr.chksum == chksum,
 			"Bad VRRP checksum %" PRIx16 "; should be %" PRIx16 "",
 			(*pkt)->hdr.chksum, chksum);
+#endif
 
 	/* Type check */
 	VRRP_PKT_VCHECK(((*pkt)->hdr.vertype & 0x0F) == 1, "Bad type %" PRIu8,

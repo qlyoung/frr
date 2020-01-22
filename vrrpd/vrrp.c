@@ -990,7 +990,10 @@ static int vrrp_recv_advertisement(struct vrrp_router *r, struct ipaddr *src,
 /*
  * Read and process next IPvX datagram.
  */
-static int vrrp_read(struct thread *thread)
+#ifndef FUZZING
+static
+#endif
+int vrrp_read(struct thread *thread)
 {
 	struct vrrp_router *r = thread->arg;
 
@@ -1015,6 +1018,7 @@ static int vrrp_read(struct thread *thread)
 	m.msg_control = control;
 	m.msg_controllen = sizeof(control);
 
+#ifndef FUZZING
 	nbytes = recvmsg(r->sock_rx, &m, MSG_DONTWAIT);
 
 	if ((nbytes < 0 && ERRNO_IO_RETRY(errno))) {
@@ -1025,6 +1029,10 @@ static int vrrp_read(struct thread *thread)
 		resched = false;
 		goto done;
 	}
+#else
+	nbytes = r->fuzzing_input_size;
+	m.msg_name = &r->fuzzing_sa;
+#endif
 
 	if (DEBUG_MODE_CHECK(&vrrp_dbg_pkt, DEBUG_MODE_ALL)) {
 		DEBUGD(&vrrp_dbg_pkt,
@@ -1050,8 +1058,10 @@ static int vrrp_read(struct thread *thread)
 done:
 	memset(r->ibuf, 0x00, sizeof(r->ibuf));
 
+#ifndef FUZZING
 	if (resched)
 		thread_add_read(master, vrrp_read, r, r->sock_rx, &r->t_read);
+#endif
 
 	return 0;
 }
