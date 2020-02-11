@@ -803,12 +803,16 @@ int pim_mroute_socket_enable(struct pim_instance *pim)
 #else
 		fd = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
 #endif
+#ifndef FUZZING
 		if (fd < 0) {
 			zlog_warn("Could not create mroute socket: errno=%d: %s",
 				  errno,
 				  safe_strerror(errno));
 			return -2;
 		}
+#else
+		fd = 69;
+#endif
 
 #if PIM_IPV == 6
 		struct icmp6_filter filter[1];
@@ -845,6 +849,7 @@ int pim_mroute_socket_enable(struct pim_instance *pim)
 	}
 
 	pim->mroute_socket = fd;
+#ifndef FUZZING
 	if (pim_mroute_set(pim, 1)) {
 		zlog_warn(
 			"Could not enable mroute on socket fd=%d: errno=%d: %s",
@@ -857,6 +862,7 @@ int pim_mroute_socket_enable(struct pim_instance *pim)
 	pim->mroute_socket_creation = pim_time_monotonic_sec();
 
 	mroute_read_on(pim);
+#endif
 
 	return 0;
 }
