@@ -175,6 +175,9 @@ sbin_PROGRAMS += pimd/pim6d
 pimd_pim6d_CFLAGS = $(AM_CFLAGS) -DPIM_IPV=6
 pimd_pim6d_LDADD = lib/libfrr.la $(LIBCAP)
 endif
+pimd_pimd_LDFLAGS = $(AM_LDFLAGS) $(PIMD_SAN_FLAGS)
+pimd_pimd_LDADD = pimd/libpim.a lib/libfrr.la $(LIBCAP)
+pimd_pimd_SOURCES = pimd/pim_main.c
 
 pimd_test_igmpv3_join_LDADD = lib/libfrr.la
 pimd_test_igmpv3_join_SOURCES = pimd/test_igmpv3_join.c
