@@ -21,6 +21,7 @@
 #ifndef _ZEBRA_ZCLIENT_H
 #define _ZEBRA_ZCLIENT_H
 
+#define FUZZING 1
 /* For struct zapi_route. */
 #include "prefix.h"
 
@@ -795,5 +796,9 @@ extern void zclient_send_mlag_deregister(struct zclient *client);
 
 extern void zclient_send_mlag_data(struct zclient *client,
 				   struct stream *client_s);
+
+#ifdef FUZZING
+int zclient_read_fuzz(struct zclient *zclient, const uint8_t *data, size_t len);
+#endif
 
 #endif /* _ZEBRA_ZCLIENT_H */
