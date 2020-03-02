@@ -1901,12 +1901,27 @@ static int zebra_interface_if_set_value(struct stream *s,
 	}
 
 	/* Success - apply changes to ifp_tmp to ifp */
+
+	/*
+	 * Note: we cannot directly memcpy() because this will overwrite the
+	 * rb_entry, causing many hours of pain
+	 */
+	if_set_index(ifp, ifp_tmp.ifindex);
 	if (if_set_index(ifp, ifp_tmp.ifindex) < 0)
 		goto stream_failure;
-
-	/* Point of no return, we cannot safely fail past this point */
-
-	memcpy(ifp, &ifp_tmp, sizeof(struct interface));
+	ifp->status = ifp_tmp.status;
+	ifp->flags = ifp_tmp.flags;
+	ifp->ptm_enable = ifp_tmp.ptm_enable;
+	ifp->ptm_status = ifp_tmp.ptm_status;
+	ifp->metric = ifp_tmp.metric;
+	ifp->speed = ifp_tmp.speed;
+	ifp->mtu = ifp_tmp.mtu;
+	ifp->mtu6 = ifp_tmp.mtu6;
+	ifp->bandwidth = ifp_tmp.bandwidth;
+	ifp->link_ifindex = ifp_tmp.link_ifindex;
+	ifp->ll_type = ifp_tmp.ll_type;
+	ifp->hw_addr_len = ifp_tmp.hw_addr_len;
+	ifp->link_params = ifp_tmp.link_params;
 
 	/*
 	 * If ifp had no link params, and link_params_status was nonzero, then
@@ -2923,7 +2938,13 @@ static void zclient_capability_decode(ZAPI_CALLBACK_ARGS)
 	uint8_t mpls_enabled;
 
 	STREAM_GETL(s, vrf_backend);
-	vrf_configure_backend(vrf_backend);
+	if (vrf_configure_backend(vrf_backend) < 0) {
+		flog_err(EC_LIB_ZAPI_ENCODE,
+			 "%s: Garbage VRF backend type: %d\n", __func__,
+			 vrf_backend);
+		goto stream_failure;
+	}
+
 
 	memset(&cap, 0, sizeof(cap));
 	STREAM_GETC(s, mpls_enabled);

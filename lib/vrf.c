@@ -600,10 +600,15 @@ int vrf_get_backend(void)
 	return vrf_backend;
 }
 
-void vrf_configure_backend(int vrf_backend_netns)
+int vrf_configure_backend(enum vrf_backend_type backend)
 {
-	vrf_backend = vrf_backend_netns;
+	if (backend > VRF_BACKEND_MAX || backend < 0)
+		return -1;
+
+	vrf_backend = backend;
 	vrf_backend_configured = 1;
+
+	return 0;
 }
 
 int vrf_handler_create(struct vty *vty, const char *vrfname,
