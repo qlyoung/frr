@@ -1602,15 +1602,23 @@ stream_failure:
 static int zclient_vrf_add(struct zclient *zclient, vrf_id_t vrf_id)
 {
 	struct vrf *vrf;
-	char vrfname_tmp[VRF_NAMSIZ];
+	char vrfname_tmp[VRF_NAMSIZ + 1] = {};
 	struct vrf_data data;
 
 	STREAM_GET(&data, zclient->ibuf, sizeof(struct vrf_data));
 	/* Read interface name. */
 	STREAM_GET(vrfname_tmp, zclient->ibuf, VRF_NAMSIZ);
 
+	if (vrf_id < 0 || strlen(vrfname_tmp) == 0)
+		goto stream_failure;
+
 	/* Lookup/create vrf by vrf_id. */
 	vrf = vrf_get(vrf_id, vrfname_tmp);
+
+	/* Maybe it already exists? */
+	if (!vrf && vrf_get(vrf_id, NULL) != NULL)
+		return 0;
+
 	vrf->data.l.table_id = data.l.table_id;
 	memcpy(vrf->data.l.netns_name, data.l.netns_name, NS_NAMSIZ);
 	/* overwrite default vrf */
@@ -1678,7 +1686,7 @@ stream_failure:
 struct interface *zebra_interface_state_read(struct stream *s, vrf_id_t vrf_id)
 {
 	struct interface *ifp;
-	char ifname_tmp[INTERFACE_NAMSIZ];
+	char ifname_tmp[INTERFACE_NAMSIZ + 1] = {};
 
 	/* Read interface name. */
 	STREAM_GET(ifname_tmp, s, INTERFACE_NAMSIZ);
@@ -1860,6 +1868,10 @@ static int zebra_interface_if_set_value(struct stream *s,
 
 	/* Read interface's index. */
 	STREAM_GETL(s, ifp_tmp.ifindex);
+
+	if (ifp_tmp.ifindex < 0)
+		goto stream_failure;
+
 	STREAM_GETC(s, ifp_tmp.status);
 
 	/* Read interface's value. */
@@ -1889,7 +1901,11 @@ static int zebra_interface_if_set_value(struct stream *s,
 	}
 
 	/* Success - apply changes to ifp_tmp to ifp */
-	if_set_index(ifp, ifp_tmp.ifindex);
+	if (if_set_index(ifp, ifp_tmp.ifindex) < 0)
+		goto stream_failure;
+
+	/* Point of no return, we cannot safely fail past this point */
+
 	memcpy(ifp, &ifp_tmp, sizeof(struct interface));
 
 	/*
@@ -2171,7 +2187,7 @@ struct interface *zebra_interface_vrf_update_read(struct stream *s,
 						  vrf_id_t vrf_id,
 						  vrf_id_t *new_vrf_id)
 {
-	char ifname[INTERFACE_NAMSIZ];
+	char ifname[INTERFACE_NAMSIZ + 1] = {};
 	struct interface *ifp;
 	vrf_id_t new_id;
 

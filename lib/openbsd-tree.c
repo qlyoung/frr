@@ -46,12 +46,15 @@
 #endif
 
 #include <stdlib.h>
+#include <stdio.h>
 
 #include <lib/openbsd-tree.h>
 
 static inline struct rb_entry *rb_n2e(const struct rb_type *t, void *node)
 {
 	unsigned long addr = (unsigned long)node;
+
+	fprintf(stderr, "t_offset: %u\n", t->t_offset);
 
 	return ((struct rb_entry *)(addr + t->t_offset));
 }
@@ -309,6 +312,7 @@ rbe_remove(const struct rb_type *t, struct rbt_tree *rbt, struct rb_entry *rbe)
 	struct rb_entry *child, *parent, *old = rbe;
 	unsigned int color;
 
+
 	if (RBE_LEFT(rbe) == NULL)
 		child = RBE_RIGHT(rbe);
 	else if (RBE_RIGHT(rbe) == NULL)
@@ -390,7 +394,12 @@ void *_rb_remove(const struct rb_type *t, struct rbt_tree *rbt, void *elm)
 	struct rb_entry *rbe = rb_n2e(t, elm);
 	struct rb_entry *old;
 
+	fprintf(stderr, "[REMOVE] (%p)\n", elm);
+
 	old = rbe_remove(t, rbt, rbe);
+
+	fprintf(stderr, "Completed remove, performing cycle check\n");
+	_rb_find(t, rbt, elm);
 
 	return (old == NULL ? NULL : rb_e2n(t, old));
 }
@@ -404,17 +413,28 @@ void *_rb_insert(const struct rb_type *t, struct rbt_tree *rbt, void *elm)
 	int comp = 0;
 
 	tmp = RBH_ROOT(rbt);
+	fprintf(stderr, "[INSERT] Root: %p\n", tmp);
 	while (tmp != NULL) {
 		parent = tmp;
 
 		node = rb_e2n(t, tmp);
+		fprintf(stderr, "Comparing (%p), (%p)\n", elm, node);
 		comp = (*t->t_compare)(elm, node);
 		if (comp < 0)
 			tmp = RBE_LEFT(tmp);
 		else if (comp > 0)
 			tmp = RBE_RIGHT(tmp);
-		else
+		else {
+			fprintf(stderr, "Node already exists, return %p\n", node);
 			return (node);
+		}
+
+		if (tmp && RBE_RIGHT(tmp) == parent && RBE_LEFT(tmp) == parent)
+			fprintf(stderr, "RB corruption detected B (cycle)\n");
+		else if (tmp && RBE_RIGHT(tmp) == parent)
+			fprintf(stderr, "RB corruption detected R (cycle)\n");
+		else if (tmp && RBE_LEFT(tmp) == parent)
+			fprintf(stderr, "RB corruption detected L (cycle)\n");
 	}
 
 	rbe_set(rbe, parent);
@@ -422,14 +442,25 @@ void *_rb_insert(const struct rb_type *t, struct rbt_tree *rbt, void *elm)
 	if (parent != NULL) {
 		if (comp < 0)
 			RBE_LEFT(parent) = rbe;
-		else
+		else if (comp > 0)
 			RBE_RIGHT(parent) = rbe;
+		else {
+			fprintf(stderr, "RB corruption detected: Impossible equivalence\n");
+		}
 
+		if (t->t_augment) {
+			fprintf(stderr, "Augmenting\n");
+		}
 		rbe_if_augment(t, parent);
-	} else
+	} else {
 		RBH_ROOT(rbt) = rbe;
+		fprintf(stderr, "Set tree root\n");
+	}
 
 	rbe_insert_color(t, rbt, rbe);
+
+	fprintf(stderr, "Completed insertion, performing cycle check\n");
+	_rb_find(t, rbt, elm);
 
 	return NULL;
 }
@@ -441,16 +472,32 @@ void *_rb_find(const struct rb_type *t, const struct rbt_tree *rbt,
 	struct rb_entry *tmp = RBH_ROOT(rbt);
 	void *node;
 	int comp;
+	struct rb_entry *parent = NULL;
+
+	fprintf(stderr, "[FIND] Root: %p\n", tmp);
 
 	while (tmp != NULL) {
+		parent = tmp;
+
 		node = rb_e2n(t, tmp);
+		fprintf(stderr, "Comparing (%p), (%p)\n", key, node);
 		comp = (*t->t_compare)(key, node);
 		if (comp < 0)
 			tmp = RBE_LEFT(tmp);
 		else if (comp > 0)
 			tmp = RBE_RIGHT(tmp);
-		else
+
+		else {
+			fprintf(stderr, "Node already exists, return %p\n", node);
 			return (node);
+		}
+
+		if (tmp && RBE_RIGHT(tmp) == parent && RBE_LEFT(tmp) == parent)
+			fprintf(stderr, "RB corruption detected B (cycle)\n");
+		else if (tmp && RBE_RIGHT(tmp) == parent)
+			fprintf(stderr, "RB corruption detected R (cycle)\n");
+		else if (tmp && RBE_LEFT(tmp) == parent)
+			fprintf(stderr, "RB corruption detected L (cycle)\n");
 	}
 
 	return NULL;

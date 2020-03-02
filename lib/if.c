@@ -137,12 +137,20 @@ static int if_cmp_func(const struct interface *ifp1,
 static int if_cmp_index_func(const struct interface *ifp1,
 			     const struct interface *ifp2)
 {
-	if (ifp1->ifindex == ifp2->ifindex)
+
+	fprintf(stderr, "ifp1 %p[%d] -vs- ifp2 %p[%d]\n", ifp1, ifp1->ifindex, ifp2, ifp2->ifindex);
+	if (ifp1->ifindex == ifp2->ifindex) {
+		fprintf(stderr, "=\n");
 		return 0;
-	else if (ifp1->ifindex > ifp2->ifindex)
+	}
+	else if (ifp1->ifindex > ifp2->ifindex) {
+		fprintf(stderr, ">\n");
 		return 1;
-	else
+	}
+	else {
+		fprintf(stderr, "<\n");
 		return -1;
+	}
 }
 
 static void ifp_connected_free(void *arg)
@@ -174,6 +182,9 @@ static struct interface *if_new(vrf_id_t vrf_id)
 	SET_FLAG(ifp->status, ZEBRA_INTERFACE_LINKDETECTION);
 
 	QOBJ_REG(ifp, interface);
+
+	fprintf(stderr, "Created interface %p\n", ifp);
+
 	return ifp;
 }
 
@@ -320,7 +331,7 @@ static struct interface *if_lookup_by_ifindex(ifindex_t ifindex,
 					      vrf_id_t vrf_id)
 {
 	struct vrf *vrf;
-	struct interface if_tmp;
+	struct interface if_tmp = {};
 
 	vrf = vrf_lookup_by_id(vrf_id);
 	if (!vrf)
@@ -582,23 +593,48 @@ struct interface *if_get_by_ifindex(ifindex_t ifindex, vrf_id_t vrf_id)
 	return NULL;
 }
 
-void if_set_index(struct interface *ifp, ifindex_t ifindex)
+int if_set_index(struct interface *ifp, ifindex_t ifindex)
 {
 	struct vrf *vrf;
+
+	if (ifp->ifindex == ifindex)
+		return 0;
 
 	vrf = vrf_get(ifp->vrf_id, NULL);
 	assert(vrf);
 
-	if (ifp->ifindex == ifindex)
-		return;
+	/*
+	 * If there is already an interface with this ifindex, we will collide
+	 * on insertion, so don't even try.
+	 */
+	fprintf(stderr, "Checking for iface %d in vrf %u\n", ifindex, ifp->vrf_id);
+	if (if_lookup_by_ifindex(ifindex, ifp->vrf_id))
+		return -1;
 
-	if (ifp->ifindex != IFINDEX_INTERNAL)
+	fprintf(stderr, "%s No existing interface with ifindex %d in %u, proceeding\n", __func__, ifindex, ifp->vrf_id);
+
+
+	fprintf(stderr, "Changing ifp(%p) ifindex from %d to %d\n", ifp, ifp->ifindex, ifindex);
+	fprintf(stderr, "Removing old ifp with ifindex %d\n", ifp->ifindex);
+	if (ifp->ifindex != IFINDEX_INTERNAL) {
+		fprintf(stderr, "Non internal ifindex %d\n", ifp->ifindex);
 		IFINDEX_RB_REMOVE(vrf, ifp);
+	}
 
 	ifp->ifindex = ifindex;
 
-	if (ifp->ifindex != IFINDEX_INTERNAL)
-		IFINDEX_RB_INSERT(vrf, ifp)
+	fprintf(stderr, "Inserting ifp with new ifindex %d\n", ifp->ifindex);
+	if (ifp->ifindex != IFINDEX_INTERNAL) {
+		/*
+		 * This should never happen, since we checked if there was
+		 * already an interface with the desired ifindex at the top of
+		 * the function. Nevertheless.
+		 */
+		if (IFINDEX_RB_INSERT(vrf, ifp))
+			return -1;
+	}
+
+	return 0;
 }
 
 void if_set_name(struct interface *ifp, const char *name)

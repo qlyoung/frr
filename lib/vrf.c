@@ -157,10 +157,14 @@ struct vrf *vrf_get(vrf_id_t vrf_id, const char *name)
 	struct vrf *vrf = NULL;
 	int new = 0;
 
+	fprintf(stderr, "VRF_GET: %s(%u)\n", name == NULL ? "(NULL)" : name, vrf_id);
+
 	if (debug_vrf)
 		zlog_debug("VRF_GET: %s(%u)", name == NULL ? "(NULL)" : name,
 			   vrf_id);
 
+
+	fprintf(stderr, "VRF: %u (%s)\n", vrf_id, name);
 	/* Nothing to see, move along here */
 	if (!name && vrf_id == VRF_UNKNOWN)
 		return NULL;
@@ -172,6 +176,7 @@ struct vrf *vrf_get(vrf_id_t vrf_id, const char *name)
 	if (vrf && vrf_id != VRF_UNKNOWN
 	    && vrf->vrf_id != VRF_UNKNOWN
 	    && vrf->vrf_id != vrf_id) {
+		fprintf(stderr, "VRF exists: %u (%s)\n", vrf_id, name);
 		zlog_debug("VRF_GET: avoid %s creation(%u), same name exists (%u)",
 			   name, vrf_id, vrf->vrf_id);
 		return NULL;
