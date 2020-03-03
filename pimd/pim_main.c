@@ -50,6 +50,13 @@
 #include "pim_mlag.h"
 #include "pim_errors.h"
 
+#define FUZZING 1
+#ifdef FUZZING
+#include "fuzz.h"
+#include "pim_pim.h"
+#include "pim_mroute.h"
+#endif
+
 extern struct host host;
 
 struct option longopts[] = {{0}};
@@ -87,10 +94,133 @@ FRR_DAEMON_INFO(pimd, PIM, .vty_port = PIMD_VTY_PORT,
 		.privs = &pimd_privs, .yang_modules = pimd_yang_modules,
 		.n_yang_modules = array_size(pimd_yang_modules), )
 
+#ifdef FUZZING
+
+int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size);
+
+static struct interface *FuzzingIfp;
+static struct in_addr FuzzingSrc = { .s_addr = 0x0900001b };
+
+static bool FuzzingInit(void)
+{
+	vrf_configure_backend(VRF_BACKEND_VRF_LITE);
+
+	const char *name[] = {"pimd"};
+
+	frr_preinit(&pimd_di, 1, (char **)name);
+	pim_router_init();
+
+	/*
+	 * Initializations
+	 */
+	pim_error_init();
+	pim_vrf_init();
+	access_list_init();
+	prefix_list_init();
+	prefix_list_add_hook(pim_prefix_list_update);
+	prefix_list_delete_hook(pim_prefix_list_update);
+
+	pim_route_map_init();
+	pim_init();
+
+	/*
+	 * Initialize zclient "update" and "lookup" sockets
+	 */
+	if_zapi_callbacks(pim_ifp_create, pim_ifp_up,
+			  pim_ifp_down, pim_ifp_destroy);
+	pim_zebra_init();
+	pim_bfd_init();
+	pim_mlag_init();
+
+	/* Create some fake interface */
+
+	/* Source address stuff */
+	struct prefix p;
+	str2prefix("27.0.0.9/24", &p);
+
+	/* Create system interface */
+	FuzzingIfp = if_create_name("fuzziface", VRF_DEFAULT);
+	if_set_index(FuzzingIfp, 69);
+
+	connected_add_by_prefix(FuzzingIfp, &p, NULL);
+
+	return true;
+}
+
+static struct pim_instance *FuzzingCreatePimInstance(void)
+{
+	/* Create pim stuff */
+	fprintf(stderr, ">>>>>>>>> %p\n", FuzzingIfp);
+	struct pim_interface *pim_ifp = pim_if_new(FuzzingIfp, true, true, false, false);
+	pim_igmp_sock_add(pim_ifp->igmp_socket_list, FuzzingSrc, FuzzingIfp, false);
+
+	struct pim_instance *pim = vrf_lookup_by_id(VRF_DEFAULT)->info;
+	pim_if_create_pimreg(pim);
+	pim_hello_options ho = 0;
+	pim_neighbor_add(FuzzingIfp, FuzzingSrc, ho, 210, 1, 1, 30, 20, NULL, 0);
+
+	return pim;
+}
+
+static bool FuzzingInitialized;
+
+static struct pim_instance *FuzzingPim;
+
+int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
+{
+	if (!FuzzingInitialized) {
+		FuzzingInit();
+		FuzzingInitialized = true;
+		FuzzingPim = FuzzingCreatePimInstance();
+	}
+
+	struct pim_instance *pim;
+#ifdef FUZZING_LIBFUZZER
+	pim = FuzzingPim;
+#else
+	pim = FuzzingPim;
+#endif
+
+	int result;
+
+	uint8_t *input = malloc(size);
+	memcpy(input, data, size);
+
+#ifdef KERNEL_IFACE
+	result = pim_mroute_msg(pim, (const char *) input, size, 69);
+#else
+	result = pim_pim_packet(FuzzingIfp, input, size);
+#endif /* KERNEL_IFACE */
+
+	free(input);
+
+	return result;
+}
+#endif /* FUZZING */
+
+#ifndef FUZZING_LIBFUZZER
 
 int main(int argc, char **argv, char **envp)
 {
 	frr_preinit(&pimd_di, argc, argv);
+
+#ifdef FUZZING
+	FuzzingInit();
+	FuzzingInitialized = true;
+	FuzzingPim = FuzzingCreatePimInstance();
+
+#ifdef __AFL_HAVE_MANUAL_CONTROL
+	__AFL_INIT();
+#endif /* __AFL_HAVE_MANUAL_CONTROL */
+
+	uint8_t *input = NULL;
+	int r = frrfuzz_read_input(&input);
+
+	int ret = LLVMFuzzerTestOneInput(input, r);
+
+	return ret;
+#endif /* FUZZING */
+
 	frr_opt_add("", longopts, "");
 
 	/* this while just reads the options */
@@ -111,6 +241,7 @@ int main(int argc, char **argv, char **envp)
 		}
 	}
 
+
 	pim_router_init();
 
 	/*
@@ -125,6 +256,7 @@ int main(int argc, char **argv, char **envp)
 
 	pim_route_map_init();
 	pim_init();
+
 
 	/*
 	 * Initialize zclient "update" and "lookup" sockets
@@ -167,3 +299,4 @@ int main(int argc, char **argv, char **envp)
 	/* never reached */
 	return 0;
 }
+#endif /* FUZZING_LIBFUZZER */

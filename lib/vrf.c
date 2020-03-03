@@ -157,10 +157,14 @@ struct vrf *vrf_get(vrf_id_t vrf_id, const char *name)
 	struct vrf *vrf = NULL;
 	int new = 0;
 
+	fprintf(stderr, "VRF_GET: %s(%u)\n", name == NULL ? "(NULL)" : name, vrf_id);
+
 	if (debug_vrf)
 		zlog_debug("VRF_GET: %s(%u)", name == NULL ? "(NULL)" : name,
 			   vrf_id);
 
+
+	fprintf(stderr, "VRF: %u (%s)\n", vrf_id, name);
 	/* Nothing to see, move along here */
 	if (!name && vrf_id == VRF_UNKNOWN)
 		return NULL;
@@ -172,6 +176,7 @@ struct vrf *vrf_get(vrf_id_t vrf_id, const char *name)
 	if (vrf && vrf_id != VRF_UNKNOWN
 	    && vrf->vrf_id != VRF_UNKNOWN
 	    && vrf->vrf_id != vrf_id) {
+		fprintf(stderr, "VRF exists: %u (%s)\n", vrf_id, name);
 		zlog_debug("VRF_GET: avoid %s creation(%u), same name exists (%u)",
 			   name, vrf_id, vrf->vrf_id);
 		return NULL;
@@ -595,10 +600,15 @@ int vrf_get_backend(void)
 	return vrf_backend;
 }
 
-void vrf_configure_backend(int vrf_backend_netns)
+int vrf_configure_backend(enum vrf_backend_type backend)
 {
-	vrf_backend = vrf_backend_netns;
+	if (backend > VRF_BACKEND_MAX || backend < 0)
+		return -1;
+
+	vrf_backend = backend;
 	vrf_backend_configured = 1;
+
+	return 0;
 }
 
 int vrf_handler_create(struct vty *vty, const char *vrfname,

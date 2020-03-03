@@ -47,7 +47,7 @@ static uint16_t bgp_write(struct peer *);
 static uint16_t bgp_read(struct peer *);
 static int bgp_process_writes(struct thread *);
 static int bgp_process_reads(struct thread *);
-static bool validate_header(struct peer *);
+bool validate_header(struct peer *);
 
 /* generic i/o status codes */
 #define BGP_IO_TRANS_ERR (1 << 0) // EAGAIN or similar occurred
@@ -57,6 +57,9 @@ static bool validate_header(struct peer *);
 
 void bgp_writes_on(struct peer *peer)
 {
+#ifdef FUZZING
+	return;
+#endif
 	struct frr_pthread *fpt = bgp_pth_io;
 	assert(fpt->running);
 
@@ -75,6 +78,9 @@ void bgp_writes_on(struct peer *peer)
 
 void bgp_writes_off(struct peer *peer)
 {
+#ifdef FUZZING
+	return;
+#endif
 	struct frr_pthread *fpt = bgp_pth_io;
 	assert(fpt->running);
 
@@ -86,6 +92,9 @@ void bgp_writes_off(struct peer *peer)
 
 void bgp_reads_on(struct peer *peer)
 {
+#ifdef FUZZING
+	return;
+#endif
 	struct frr_pthread *fpt = bgp_pth_io;
 	assert(fpt->running);
 
@@ -106,6 +115,9 @@ void bgp_reads_on(struct peer *peer)
 
 void bgp_reads_off(struct peer *peer)
 {
+#ifdef FUZZING
+	return;
+#endif
 	struct frr_pthread *fpt = bgp_pth_io;
 	assert(fpt->running);
 
@@ -511,7 +523,7 @@ static uint16_t bgp_read(struct peer *peer)
  * Assumes that there are at least BGP_HEADER_SIZE readable bytes in the input
  * buffer.
  */
-static bool validate_header(struct peer *peer)
+bool validate_header(struct peer *peer)
 {
 	uint16_t size;
 	uint8_t type;

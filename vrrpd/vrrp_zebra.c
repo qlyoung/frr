@@ -32,7 +32,11 @@
 
 #define VRRP_LOGPFX "[ZEBRA] "
 
+#ifndef FUZZING
 static struct zclient *zclient;
+#else
+struct zclient *zclient;
+#endif
 
 static void vrrp_zebra_debug_if_state(struct interface *ifp, vrf_id_t vrf_id,
 				      const char *func)
@@ -181,6 +185,9 @@ void vrrp_zebra_radv_set(struct vrrp_router *r, bool enable)
 
 int vrrp_zclient_send_interface_protodown(struct interface *ifp, bool down)
 {
+	if (!ifp)
+		return 0;
+
 	DEBUGD(&vrrp_dbg_zebra,
 	       VRRP_LOGPFX "Requesting Zebra to set %s protodown %s", ifp->name,
 	       down ? "on" : "off");

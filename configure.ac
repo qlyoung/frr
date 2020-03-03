@@ -288,7 +288,7 @@ AM_CONDITIONAL([DEV_BUILD], [test "x$enable_dev_build" = "xyes"])
 dnl always want these CFLAGS
 AC_C_FLAG([-fno-omit-frame-pointer])
 AC_C_FLAG([-funwind-tables])
-AC_C_FLAG([-Wall])
+#AC_C_FLAG([-Wall])
 AC_C_FLAG([-Wextra])
 AC_C_FLAG([-Wmissing-prototypes])
 AC_C_FLAG([-Wmissing-declarations])
@@ -352,7 +352,26 @@ if test "$enable_undefined_sanitizer" = "yes"; then
     SAN_FLAGS="$SAN_FLAGS -fsanitize=undefined"
   ])
 fi
+if test "$enable_libfuzzer" = "yes"; then
+  AC_C_FLAG([-fsanitize=address,fuzzer], [
+    AC_MSG_ERROR([$CC does not support ASAN / libFuzzer.])
+  ], [
+    AC_MSG_NOTICE([WARNING - libFuzzer only enabled on supported daemons])
+    SAN_FLAGS="$SAN_FLAGS -fsanitize=fuzzer-no-link"
+    BGPD_SAN_FLAGS="-fsanitize=fuzzer"
+    ZEBRA_SAN_FLAGS="-fsanitize=fuzzer"
+    OSPFD_SAN_FLAGS="-fsanitize=fuzzer"
+    VRRPD_SAN_FLAGS="-fsanitize=fuzzer"
+    PIMD_SAN_FLAGS="-fsanitize=fuzzer"
+    AC_DEFINE([FUZZING_LIBFUZZER], [1], [Compiling and linking with libFuzzer])
+  ])
+fi
 AC_SUBST([SAN_FLAGS])
+AC_SUBST([BGPD_SAN_FLAGS])
+AC_SUBST([ZEBRA_SAN_FLAGS])
+AC_SUBST([OSPFD_SAN_FLAGS])
+AC_SUBST([VRRPD_SAN_FLAGS])
+AC_SUBST([PIMD_SAN_FLAGS])
 
 dnl ----------
 dnl Essentials
@@ -598,6 +617,8 @@ AC_ARG_ENABLE([memory-sanitizer],
   AS_HELP_STRING([--enable-memory-sanitizer], [enable MemorySanitizer support for detecting uninitialized memory reads]))
 AC_ARG_ENABLE([undefined-sanitizer],
   AS_HELP_STRING([--undefined-sanitizer], [enable UndefinedBehaviorSanitizer support for detecting undefined behavior]))
+AC_ARG_ENABLE([libfuzzer],
+  AS_HELP_STRING([--libfuzzer], [enable libFuzzer]))
 AC_ARG_WITH([crypto],
   AS_HELP_STRING([--with-crypto=<internal|openssl>], [choose between different implementations of cryptographic functions(default value is --with-crypto=internal)]))
 

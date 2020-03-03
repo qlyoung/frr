@@ -35,6 +35,8 @@
 #include "vrf.h"
 #include "libfrr.h"
 #include "routemap.h"
+#include "fuzz.h"
+#include "frr_pthread.h"
 
 #include "zebra/zebra_router.h"
 #include "zebra/zebra_errors.h"
@@ -53,6 +55,7 @@
 #include "zebra/zebra_rnh.h"
 #include "zebra/zebra_pbr.h"
 #include "zebra/zebra_vxlan.h"
+#include "zebra/zapi_msg.h"
 
 #if defined(HANDLE_NETLINK_FUZZING)
 #include "zebra/kernel_netlink.h"
@@ -254,6 +257,94 @@ FRR_DAEMON_INFO(
 	.yang_modules = zebra_yang_modules,
 	.n_yang_modules = array_size(zebra_yang_modules), )
 
+#ifdef FUZZING
+
+int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size);
+
+static bool FuzzingInit(void)
+{
+	graceful_restart = 0;
+	vrf_configure_backend(VRF_BACKEND_VRF_LITE);
+
+	const char *name[] = { "zebra" };
+
+	frr_preinit(&zebra_di, 1, (char **) name);
+
+	/* Zebra related initialize. */
+	zrouter.master = frr_init_fast();
+
+	zebra_router_init();
+	zserv_init();
+	rib_init();
+	zebra_if_init();
+	zebra_debug_init();
+	router_id_cmd_init();
+	zebra_ns_init((const char *)NULL);
+	zebra_vty_init();
+	access_list_init();
+	prefix_list_init();
+	zebra_mpls_init();
+	zebra_mpls_vty_init();
+	zebra_pw_vty_init();
+	zebra_pbr_init();
+	zrouter.startup_time = monotime(NULL);
+	label_manager_init();
+	zebra_rnh_init();
+	zebra_evpn_init();
+	zebra_error_init();
+	frr_pthread_init();
+
+	return true;
+}
+
+#ifndef FUZZING_LIBFUZZER
+static struct zserv *FuzzingZc;
+#endif /* FUZZING_LIBFUZZER */
+
+static bool FuzzingInitialized;
+
+int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
+{
+	if (!FuzzingInitialized) {
+		FuzzingInit();
+		FuzzingInitialized = true;
+	}
+
+	/*
+	 * In the AFL standalone case, the client will already be created for
+	 * us before __AFL_INIT() is called to speed things up. We can't pass
+	 * it as an argument because the function signature must match
+	 * libFuzzer's expectations.
+	 *
+	 * In the libFuzzer case, we need to create it each time.
+	 *
+	 * In both cases the client must be destroyed before we return..
+	 */
+	struct zserv *zc;
+#ifdef FUZZING_LIBFUZZER
+	zc = zserv_client_create(69);
+#else
+	zc = FuzzingZc;
+#endif /* FUZZING_LIBFUZZER */
+
+	struct stream *s = stream_new(size + 1);
+	stream_put(s, data, size);
+
+	zserv_handle_commands(zc, s);
+
+	stream_free(s);
+
+done:
+	zserv_close_client(zc);
+
+	return 0;
+}
+#endif /* FUZZING */
+
+#ifndef FUZZING_LIBFUZZER
+
+CPP_NOTICE("Not using LibFuzzer, compiling in main symbol!")
+
 /* Main startup routine. */
 int main(int argc, char **argv)
 {
@@ -262,12 +353,30 @@ int main(int argc, char **argv)
 	char *vrf_default_name_configured = NULL;
 	struct sockaddr_storage dummy;
 	socklen_t dummylen;
-#if defined(HANDLE_ZAPI_FUZZING)
-	char *zapi_fuzzing = NULL;
-#endif /* HANDLE_ZAPI_FUZZING */
 #if defined(HANDLE_NETLINK_FUZZING)
 	char *netlink_fuzzing = NULL;
 #endif /* HANDLE_NETLINK_FUZZING */
+
+#ifdef FUZZING
+	FuzzingInit();
+	FuzzingInitialized = true;
+	FuzzingZc = zserv_client_create(69);
+
+#ifdef __AFL_HAVE_MANUAL_CONTROL
+	__AFL_INIT();
+#endif /* __AFL_HAVE_MANUAL_CONTROL */
+
+	uint8_t *input;
+	int r = frrfuzz_read_input(&input);
+
+	int ret = LLVMFuzzerTestOneInput(input, r);
+
+	if (r > 0 && input) {
+		free(input);
+	}
+
+	return ret;
+#endif /* FUZZING */
 
 	graceful_restart = 0;
 	vrf_configure_backend(VRF_BACKEND_VRF_LITE);
@@ -279,9 +388,6 @@ int main(int argc, char **argv)
 #ifdef HAVE_NETLINK
 		"s:n"
 #endif
-#if defined(HANDLE_ZAPI_FUZZING)
-		"c:"
-#endif /* HANDLE_ZAPI_FUZZING */
 #if defined(HANDLE_NETLINK_FUZZING)
 		"w:"
 #endif /* HANDLE_NETLINK_FUZZING */
@@ -299,9 +405,6 @@ int main(int argc, char **argv)
 		"  -s, --nl-bufsize         Set netlink receive buffer size\n"
 		"      --v6-rr-semantics    Use v6 RR semantics\n"
 #endif /* HAVE_NETLINK */
-#if defined(HANDLE_ZAPI_FUZZING)
-		"  -c <file>                Bypass normal startup and use this file for testing of zapi\n"
-#endif /* HANDLE_ZAPI_FUZZING */
 #if defined(HANDLE_NETLINK_FUZZING)
 		"  -w <file>                Bypass normal startup and use this file for testing of netlink input\n"
 #endif /* HANDLE_NETLINK_FUZZING */
@@ -362,11 +465,6 @@ int main(int argc, char **argv)
 			v6_rr_semantics = true;
 			break;
 #endif /* HAVE_NETLINK */
-#if defined(HANDLE_ZAPI_FUZZING)
-		case 'c':
-			zapi_fuzzing = optarg;
-			break;
-#endif /* HANDLE_ZAPI_FUZZING */
 #if defined(HANDLE_NETLINK_FUZZING)
 		case 'w':
 			netlink_fuzzing = optarg;
@@ -458,12 +556,6 @@ int main(int argc, char **argv)
 	/* Error init */
 	zebra_error_init();
 
-#if defined(HANDLE_ZAPI_FUZZING)
-	if (zapi_fuzzing) {
-		zserv_read_file(zapi_fuzzing);
-		exit(0);
-	}
-#endif /* HANDLE_ZAPI_FUZZING */
 #if defined(HANDLE_NETLINK_FUZZING)
 	if (netlink_fuzzing) {
 		netlink_read_init(netlink_fuzzing);
@@ -477,3 +569,4 @@ int main(int argc, char **argv)
 	/* Not reached... */
 	return 0;
 }
+#endif /* FUZZING_LIBFUZZER */

@@ -178,7 +178,7 @@ static int pim_vrf_disable(struct vrf *vrf)
 	return 0;
 }
 
-static int pim_vrf_config_write(struct vty *vty)
+static int  __attribute__((unused)) pim_vrf_config_write(struct vty *vty)
 {
 	struct vrf *vrf;
 	struct pim_instance *pim;
@@ -206,7 +206,9 @@ void pim_vrf_init(void)
 	vrf_init(pim_vrf_new, pim_vrf_enable, pim_vrf_disable,
 		 pim_vrf_delete, NULL);
 
+#if 0
 	vrf_cmd_init(pim_vrf_config_write, &pimd_privs);
+#endif
 }
 
 void pim_vrf_terminate(void)

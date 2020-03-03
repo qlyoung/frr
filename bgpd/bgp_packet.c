@@ -20,6 +20,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#define FUZZING 1
+
 #include <zebra.h>
 #include <sys/time.h>
 
@@ -587,7 +589,8 @@ void bgp_open_send(struct peer *peer)
  * @param peer
  * @return 0
  */
-static int bgp_write_notify(struct peer *peer)
+#ifndef FUZZING
+static int bute__((unused)) bgp_write_notify(struct peer *peer)
 {
 	int ret, val;
 	uint8_t type;
@@ -652,6 +655,7 @@ static int bgp_write_notify(struct peer *peer)
 
 	return 0;
 }
+#endif
 
 /*
  * Creates a BGP Notify and appends it to the peer's output queue.
@@ -775,7 +779,9 @@ void bgp_notify_send_with_data(struct peer *peer, uint8_t code,
 	BGP_GR_ROUTER_DETECT_AND_SEND_CAPABILITY_TO_ZEBRA(peer->bgp,
 							  peer->bgp->peer);
 
+#ifndef FUZZING
 	bgp_write_notify(peer);
+#endif
 }
 
 /*
@@ -1344,6 +1350,7 @@ static int bgp_open_receive(struct peer *peer, bgp_size_t size)
 	if (ret < 0)
 		return BGP_Stop;
 
+#ifndef FUZZING
 	/* Get sockname. */
 	if (bgp_getsockname(peer) < 0) {
 		flog_err_sys(EC_LIB_SOCKET,
@@ -1351,6 +1358,7 @@ static int bgp_open_receive(struct peer *peer, bgp_size_t size)
 			     __FUNCTION__, peer->host);
 		return BGP_Stop;
 	}
+#endif
 
 	/* Verify valid local address present based on negotiated
 	 * address-families. */
@@ -1388,7 +1396,9 @@ static int bgp_open_receive(struct peer *peer, bgp_size_t size)
 #endif
 		}
 	}
+#ifndef FUZZING
 	peer->rtt = sockopt_tcp_rtt(peer->fd);
+#endif
 
 	return Receive_OPEN_message;
 }
@@ -2297,9 +2307,11 @@ int bgp_process_packet(struct thread *thread)
 		bgp_size_t size;
 		char notify_data_length[2];
 
+#ifndef FUZZING
 		frr_with_mutex(&peer->io_mtx) {
 			peer->curr = stream_fifo_pop(peer->ibuf);
 		}
+#endif
 
 		if (peer->curr == NULL) // no packets to process, hmm...
 			return 0;
@@ -2312,7 +2324,9 @@ int bgp_process_packet(struct thread *thread)
 		size = stream_getw(peer->curr);
 		type = stream_getc(peer->curr);
 
+#ifndef FUZZING
 		hook_call(bgp_packet_dump, peer, type, size, peer->curr);
+#endif
 
 		/* adjust size to exclude the marker + length + type */
 		size -= BGP_HEADER_SIZE;
@@ -2374,6 +2388,10 @@ int bgp_process_packet(struct thread *thread)
 					__FUNCTION__, peer->host);
 			break;
 		case BGP_MSG_CAPABILITY:
+#ifdef FUZZING
+			/* This shit is 1. buggy 2. not worth fixing */
+			break;
+#endif
 			atomic_fetch_add_explicit(&peer->dynamic_cap_in, 1,
 						  memory_order_relaxed);
 			mprc = bgp_capability_receive(peer, size);
@@ -2399,6 +2417,9 @@ int bgp_process_packet(struct thread *thread)
 		/* delete processed packet */
 		stream_free(peer->curr);
 		peer->curr = NULL;
+#ifdef FUZZING
+		return 0;
+#endif
 		processed++;
 
 		/* Update FSM */

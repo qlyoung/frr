@@ -21,6 +21,7 @@
 #ifndef _ZEBRA_ZCLIENT_H
 #define _ZEBRA_ZCLIENT_H
 
+#define FUZZING 1
 /* For struct zapi_route. */
 #include "prefix.h"
 
@@ -705,7 +706,7 @@ zebra_interface_nbr_address_read(int, struct stream *, vrf_id_t);
 extern struct interface *zebra_interface_vrf_update_read(struct stream *s,
 							 vrf_id_t vrf_id,
 							 vrf_id_t *new_vrf_id);
-extern void zebra_router_id_update_read(struct stream *s, struct prefix *rid);
+extern int zebra_router_id_update_read(struct stream *s, struct prefix *rid);
 
 extern struct interface *zebra_interface_link_params_read(struct stream *s,
 							  vrf_id_t vrf_id);
@@ -734,7 +735,8 @@ extern int zapi_labels_decode(struct stream *s, struct zapi_labels *zl);
 
 extern int zebra_send_pw(struct zclient *zclient, int command,
 			 struct zapi_pw *pw);
-extern void zebra_read_pw_status_update(ZAPI_CALLBACK_ARGS, struct zapi_pw_status *pw);
+extern int zebra_read_pw_status_update(ZAPI_CALLBACK_ARGS,
+				       struct zapi_pw_status *pw);
 
 extern int zclient_route_send(uint8_t, struct zclient *, struct zapi_route *);
 extern int zclient_send_rnh(struct zclient *zclient, int command,
@@ -795,5 +797,9 @@ extern void zclient_send_mlag_deregister(struct zclient *client);
 
 extern void zclient_send_mlag_data(struct zclient *client,
 				   struct stream *client_s);
+
+#ifdef FUZZING
+int zclient_read_fuzz(struct zclient *zclient, const uint8_t *data, size_t len);
+#endif
 
 #endif /* _ZEBRA_ZCLIENT_H */
