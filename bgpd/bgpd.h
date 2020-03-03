@@ -1367,7 +1367,7 @@ struct peer {
 	 */
 
 	size_t last_reset_cause_size;
-	uint8_t last_reset_cause[BGP_MAX_PACKET_SIZE];
+	uint8_t last_reset_cause[BGP_MAX_EXT_MESSAGE_PACKET_SIZE];
 
 	/* The kind of route-map Flags.*/
 	uint16_t rmap_type;
