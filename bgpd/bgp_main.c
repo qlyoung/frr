@@ -437,6 +437,8 @@ static struct peer *FuzzingCreatePeer(int state)
 		SET_FLAG(p->af_cap[afi][safi], 0x3FFF);
 	}
 
+	p->max_packet_size = BGP_MAX_EXT_MESSAGE_PACKET_SIZE;
+
 	return p;
 }
 
@@ -482,7 +484,12 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 	p = FuzzingPeer;
 #endif /* FUZZING_LIBFUZZER */
 
+	ringbuf_reset(p->ibuf_work);
 	ringbuf_put(p->ibuf_work, data, size);
+
+	int result = 0;
+	unsigned char pktbuf[p->max_packet_size];
+	uint16_t pktsize = 0;
 
 	/*
 	 * Simulate the read process done by bgp_process_reads().
@@ -500,14 +507,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 	fprintf(stderr, "good header\n");
 
 
-	int result = 0;
-	unsigned char pktbuf[BGP_MAX_PACKET_SIZE];
-	uint16_t pktsize = 0;
-
 	ringbuf_peek(p->ibuf_work, BGP_MARKER_SIZE, &pktsize, sizeof(pktsize));
 	pktsize = ntohs(pktsize);
 
-	assert(pktsize <= BGP_MAX_PACKET_SIZE);
+	assert(pktsize <= p->max_packet_size);
 
 	if (ringbuf_remain(p->ibuf_work) >= pktsize) {
 		struct stream *pkt = stream_new(pktsize);
