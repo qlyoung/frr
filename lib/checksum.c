@@ -90,6 +90,7 @@ uint16_t in_cksumv(const struct iovec *iov, size_t iov_len)
    without modifying the buffer; a valid checksum returns 0 */
 uint16_t fletcher_checksum(uint8_t *buffer, const size_t len,
 			   const uint16_t offset)
+	__attribute__((no_sanitize("unsigned-integer-overflow")))
 {
 	uint8_t *p;
 	int x, y, c0, c1;
