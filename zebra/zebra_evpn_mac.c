@@ -2099,6 +2099,7 @@ int zebra_evpn_add_update_local_mac(struct zebra_vrf *zvrf, zebra_evpn_t *zevpn,
 			if (is_dup_detect) {
 				inform_client = false;
 				upd_neigh = false;
+				es_change = false;
 			}
 		}
 	}
@@ -2131,7 +2132,8 @@ int zebra_evpn_add_update_local_mac(struct zebra_vrf *zvrf, zebra_evpn_t *zevpn,
 				mac->es ? mac->es->esi_str : "", mac->loc_seq,
 				mac->flags,
 				local_inactive ? " local-inactive" : "");
-		inform_client = true;
+		if (!is_dup_detect)
+			inform_client = true;
 	}
 
 	if (es_change) {
