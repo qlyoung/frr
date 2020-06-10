@@ -39,8 +39,14 @@ RUN echo 'http://dl-cdn.alpinelinux.org/alpine/edge/testing' >> /etc/apk/reposit
 COPY --from=source-builder /src/frr-*.tar.gz /src/alpine/* /dist/
 RUN adduser -D -G abuild builder && chown -R builder /dist /pkgs
 USER builder
-RUN cd /dist \
-	&& abuild-keygen -a -n \
+RUN cd /dist && \
+	apkArch="$(apk --print-arch)"; \
+	case "$apkArch" in \
+	  armv7) apkArch='armhf';; \
+	esac; \
+	export CARCH="$apkArch"; \
+	sed -i -e "s/ARCH_REPLACE/$CARCH/g" ./APKBUILD ; \
+	abuild-keygen -a -n \
 	&& abuild checksum \
 	&& git init \
 	&& abuild -r -P /pkgs/apk
