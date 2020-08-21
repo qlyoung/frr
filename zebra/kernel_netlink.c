@@ -20,6 +20,12 @@
 
 #include <zebra.h>
 
+#if defined(HANDLE_NETLINK_FUZZING)
+#include <stdio.h>
+#include <string.h>
+#include "libfrr.h"
+#endif /* HANDLE_NETLINK_FUZZING */
+
 #ifdef HAVE_NETLINK
 
 #include "linklist.h"
@@ -480,6 +486,36 @@ static int dplane_netlink_information_fetch(struct nlmsghdr *h, ns_id_t ns_id,
 
 	return 0;
 }
+
+#if defined(HANDLE_NETLINK_FUZZING)
+/* Using globals here to avoid adding function parameters */
+
+/* Keep distinct filenames for netlink fuzzy collection */
+static unsigned int netlink_file_counter = 1;
+
+/**
+ * netlink_write_incoming() - Writes all data received from netlink to a file
+ * @buf:        Data from netlink.
+ * @size:       Size of data.
+ * @counter:    Counter for keeping filenames distinct.
+ */
+static void netlink_write_incoming(const char *buf, const unsigned int size,
+				   unsigned int counter)
+{
+	char fname[MAXPATHLEN];
+	FILE *f;
+
+	snprintf(fname, MAXPATHLEN, "%s/%s_%u", frr_vtydir, "netlink", counter);
+	frr_with_privs(&zserv_privs) {
+		f = fopen(fname, "w");
+	}
+	if (f) {
+		fwrite(buf, 1, size, f);
+		fclose(f);
+	}
+}
+
+#endif /* HANDLE_NETLINK_FUZZING */
 
 static void kernel_read(struct thread *thread)
 {
@@ -990,6 +1026,11 @@ static int netlink_recv_msg(struct nlsock *nl, struct msghdr *msg)
 		zlog_hexdump(nl->buf, status);
 #endif /* NETLINK_DEBUG */
 	}
+
+#if defined(HANDLE_NETLINK_FUZZING)
+	zlog_debug("Writing incoming netlink message");
+	netlink_write_incoming(buf, status, netlink_file_counter++);
+#endif /* HANDLE_NETLINK_FUZZING */
 
 	return status;
 }
@@ -1972,5 +2013,18 @@ void kernel_router_terminate(void)
 	hash_free(nlsock_hash);
 	nlsock_hash = NULL;
 }
+
+#ifdef FUZZING
+void netlink_fuzz(const uint8_t *data, size_t size)
+{
+	struct nlmsghdr *h = (struct nlmsghdr *)data;
+
+	if (!NLMSG_OK(h, size))
+		return;
+
+	netlink_information_fetch(h, NS_DEFAULT, 0);
+}
+#endif /* FUZZING */
+
 
 #endif /* HAVE_NETLINK */
