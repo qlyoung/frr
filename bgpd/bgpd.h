@@ -1086,34 +1086,34 @@ struct peer {
 	 * flags_invert) must be respected.
 	 */
 	uint32_t flags;
-#define PEER_FLAG_PASSIVE                   (1 << 0) /* passive mode */
-#define PEER_FLAG_SHUTDOWN                  (1 << 1) /* shutdown */
-#define PEER_FLAG_DONT_CAPABILITY           (1 << 2) /* dont-capability */
-#define PEER_FLAG_OVERRIDE_CAPABILITY       (1 << 3) /* override-capability */
-#define PEER_FLAG_STRICT_CAP_MATCH          (1 << 4) /* strict-match */
-#define PEER_FLAG_DYNAMIC_CAPABILITY        (1 << 5) /* dynamic capability */
-#define PEER_FLAG_DISABLE_CONNECTED_CHECK   (1 << 6) /* disable-connected-check */
-#define PEER_FLAG_LOCAL_AS_NO_PREPEND       (1 << 7) /* local-as no-prepend */
-#define PEER_FLAG_LOCAL_AS_REPLACE_AS       (1 << 8) /* local-as no-prepend replace-as */
-#define PEER_FLAG_DELETE                    (1 << 9) /* mark the peer for deleting */
-#define PEER_FLAG_CONFIG_NODE               (1 << 10) /* the node to update configs on */
-#define PEER_FLAG_LONESOUL                  (1 << 11)
-#define PEER_FLAG_DYNAMIC_NEIGHBOR          (1 << 12) /* dynamic neighbor */
-#define PEER_FLAG_CAPABILITY_ENHE           (1 << 13) /* Extended next-hop (rfc 5549)*/
-#define PEER_FLAG_IFPEER_V6ONLY             (1 << 14) /* if-based peer is v6 only */
-#define PEER_FLAG_IS_RFAPI_HD               (1 << 15) /* attached to rfapi HD */
-#define PEER_FLAG_ENFORCE_FIRST_AS          (1 << 16) /* enforce-first-as */
-#define PEER_FLAG_ROUTEADV                  (1 << 17) /* route advertise */
-#define PEER_FLAG_TIMER                     (1 << 18) /* keepalive & holdtime */
-#define PEER_FLAG_TIMER_CONNECT             (1 << 19) /* connect timer */
-#define PEER_FLAG_PASSWORD                  (1 << 20) /* password */
-#define PEER_FLAG_LOCAL_AS                  (1 << 21) /* local-as */
-#define PEER_FLAG_UPDATE_SOURCE             (1 << 22) /* update-source */
+#define PEER_FLAG_PASSIVE                   (1U << 0) /* passive mode */
+#define PEER_FLAG_SHUTDOWN                  (1U << 1) /* shutdown */
+#define PEER_FLAG_DONT_CAPABILITY           (1U << 2) /* dont-capability */
+#define PEER_FLAG_OVERRIDE_CAPABILITY       (1U << 3) /* override-capability */
+#define PEER_FLAG_STRICT_CAP_MATCH          (1U << 4) /* strict-match */
+#define PEER_FLAG_DYNAMIC_CAPABILITY        (1U << 5) /* dynamic capability */
+#define PEER_FLAG_DISABLE_CONNECTED_CHECK   (1U << 6) /* disable-connected-check */
+#define PEER_FLAG_LOCAL_AS_NO_PREPEND       (1U << 7) /* local-as no-prepend */
+#define PEER_FLAG_LOCAL_AS_REPLACE_AS       (1U << 8) /* local-as no-prepend replace-as */
+#define PEER_FLAG_DELETE                    (1U << 9) /* mark the peer for deleting */
+#define PEER_FLAG_CONFIG_NODE               (1U << 10) /* the node to update configs on */
+#define PEER_FLAG_LONESOUL                  (1U << 11)
+#define PEER_FLAG_DYNAMIC_NEIGHBOR          (1U << 12) /* dynamic neighbor */
+#define PEER_FLAG_CAPABILITY_ENHE           (1U << 13) /* Extended next-hop (rfc 5549)*/
+#define PEER_FLAG_IFPEER_V6ONLY             (1U << 14) /* if-based peer is v6 only */
+#define PEER_FLAG_IS_RFAPI_HD               (1U << 15) /* attached to rfapi HD */
+#define PEER_FLAG_ENFORCE_FIRST_AS          (1U << 16) /* enforce-first-as */
+#define PEER_FLAG_ROUTEADV                  (1U << 17) /* route advertise */
+#define PEER_FLAG_TIMER                     (1U << 18) /* keepalive & holdtime */
+#define PEER_FLAG_TIMER_CONNECT             (1U << 19) /* connect timer */
+#define PEER_FLAG_PASSWORD                  (1U << 20) /* password */
+#define PEER_FLAG_LOCAL_AS                  (1U << 21) /* local-as */
+#define PEER_FLAG_UPDATE_SOURCE             (1U << 22) /* update-source */
 
 	/* BGP-GR Peer related  flags */
-#define PEER_FLAG_GRACEFUL_RESTART_HELPER   (1 << 23) /* Helper */
-#define PEER_FLAG_GRACEFUL_RESTART          (1 << 24) /* Graceful Restart */
-#define PEER_FLAG_GRACEFUL_RESTART_GLOBAL_INHERIT (1 << 25) /* Global-Inherit */
+#define PEER_FLAG_GRACEFUL_RESTART_HELPER   (1U << 23) /* Helper */
+#define PEER_FLAG_GRACEFUL_RESTART          (1U << 24) /* Graceful Restart */
+#define PEER_FLAG_GRACEFUL_RESTART_GLOBAL_INHERIT (1U << 25) /* Global-Inherit */
 
 	/*
 	 *GR-Disabled mode means unset PEER_FLAG_GRACEFUL_RESTART

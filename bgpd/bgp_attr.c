@@ -1,4 +1,5 @@
 /* BGP attributes management routines.
+ *
  * Copyright (C) 1996, 97, 98, 1999 Kunihiro Ishiguro
  *
  * This file is part of GNU Zebra.
@@ -686,6 +687,11 @@ bool attrhash_cmp(const void *p1, const void *p2)
 	const struct attr *attr1 = p1;
 	const struct attr *attr2 = p2;
 
+	fprintf(stderr, "comparing attr1 %p ?= %p attr2 -> ", attr1, attr2);
+
+	volatile uint32_t x = attr1->flag;
+	x += attr2->flag;
+
 	if (attr1->flag == attr2->flag && attr1->origin == attr2->origin
 	    && attr1->nexthop.s_addr == attr2->nexthop.s_addr
 	    && attr1->aspath == attr2->aspath
@@ -725,10 +731,13 @@ bool attrhash_cmp(const void *p1, const void *p2)
 		    && attr1->nh_lla_ifindex == attr2->nh_lla_ifindex
 		    && attr1->distance == attr2->distance
 		    && srv6_l3vpn_same(attr1->srv6_l3vpn, attr2->srv6_l3vpn)
-		    && srv6_vpn_same(attr1->srv6_vpn, attr2->srv6_vpn))
+		    && srv6_vpn_same(attr1->srv6_vpn, attr2->srv6_vpn)) {
+			fprintf(stderr, "true\n");
 			return true;
+		    }
 	}
 
+	fprintf(stderr, "false\n");
 	return false;
 }
 
@@ -786,7 +795,9 @@ static void *bgp_attr_hash_alloc(void *p)
 	struct attr *attr;
 
 	attr = XMALLOC(MTYPE_ATTR, sizeof(struct attr));
+	fprintf(stderr, "alloc'd new attr %p\n", attr);
 	*attr = *val;
+	// VERY SUSPICIOUS
 	if (val->encap_subtlvs) {
 		val->encap_subtlvs = NULL;
 	}
@@ -795,6 +806,7 @@ static void *bgp_attr_hash_alloc(void *p)
 		val->vnc_subtlvs = NULL;
 	}
 #endif
+	// VERY SUSPICIOUS
 	if (val->srv6_l3vpn)
 		val->srv6_l3vpn = NULL;
 	if (val->srv6_vpn)
@@ -882,8 +894,16 @@ struct attr *bgp_attr_intern(struct attr *attr)
 	 * If we don't find it, we need to allocate a one because in all
 	 * cases this returns a new reference to a hashed attr, but the input
 	 * wasn't on hash. */
+	fprintf(stderr, "inserting new attrhash %p key %u\n", attr, attrhash_key_make(attr));
 	find = (struct attr *)hash_get(attrhash, attr, bgp_attr_hash_alloc);
 	find->refcnt++;
+
+	if (find == attr)
+		fprintf(stderr, "already existed %p == %p\n", find, attr);
+	else {
+		fprintf(stderr, "didnt exist created %p, are they equal? %s\n", find, attrhash_cmp(attr, find) ? "yes" : "no");
+
+	}
 
 	return find;
 }
@@ -1095,12 +1115,22 @@ void bgp_attr_unintern(struct attr **pattr)
 	/* Decrement attribute reference. */
 	attr->refcnt--;
 
+	// SEEMS LIKE A PROBLEM
 	tmp = *attr;
 
 	/* If reference becomes zero then free attribute object. */
 	if (attr->refcnt == 0) {
+		fprintf(stderr, "releasing attr %p\n", attr);
 		ret = hash_release(attrhash, attr);
 		assert(ret != NULL);
+		fprintf(stderr, "hash released %p, key %u\n", ret, attrhash_key_make(ret));
+		struct attr *foo = hash_release(attrhash, attr);
+		if (foo) {
+			fprintf(stderr, "second release: %p, key %u\n", foo, foo ? attrhash_key_make(foo): 0);
+			fprintf(stderr, "are they equal ?= %s\n", attrhash_cmp(ret, foo) ? "yes" : "no");
+			assert(false);
+		}
+
 		XFREE(MTYPE_ATTR, attr);
 		*pattr = NULL;
 	}
@@ -2973,7 +3003,7 @@ bgp_attr_parse_ret_t bgp_attr_parse(struct peer *peer, struct attr *attr,
 			size_t lfl =
 				CHECK_FLAG(flag, BGP_ATTR_FLAG_EXTLEN) ? 2 : 1;
 			/* Rewind to end of flag field */
-			stream_forward_getp(BGP_INPUT(peer), -(1 + lfl));
+			stream_set_getp(BGP_INPUT(peer), BGP_INPUT(peer)->getp - (1 + lfl));
 			/* Type */
 			stream_get(&ndata[0], BGP_INPUT(peer), 1);
 			/* Length */

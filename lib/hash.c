@@ -149,6 +149,27 @@ void *hash_get(struct hash *hash, void *data, void *(*alloc_func)(void *))
 		if (newdata == NULL)
 			return NULL;
 
+		/* Recheck chain to ensure consistency. If the alloc func
+		 * returns something whose key does not match this chain or
+		 * which compares equal to something already in this chain,
+		 * inserting it results in undefined behavior when performing
+		 * lookups since it is indeterminate which entry in the chain
+		 * will be returned.
+		 */
+		if ((*hash->hash_key)(newdata) != key) {
+			zlog_backtrace(LOG_ERR);
+			assert(!"New hash item has different key from provided item");
+		}
+
+		for (bucket = hash->index[index]; bucket != NULL;
+		     bucket = bucket->next) {
+			if (bucket->key == key && (*hash->hash_cmp)(bucket->data, newdata)) {
+				zlog_backtrace(LOG_ERR);
+				assert(!"New hash item matches already inserted item");
+			}
+		}
+
+
 		if (HASH_THRESHOLD(hash->count + 1, hash->size)) {
 			hash_expand(hash);
 			index = key & (hash->size - 1);
@@ -220,6 +241,8 @@ void *hash_release(struct hash *hash, void *data)
 			else
 				hash->stats.empty++;
 
+			// fprintf(stderr, "old index length: %d\n", oldlen);
+			// fprintf(stderr, "new index length: %d\n", newlen);
 			hash_update_ssq(hash, oldlen, newlen);
 
 			ret = bucket->data;
