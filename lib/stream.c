@@ -60,7 +60,7 @@ DEFINE_MTYPE_STATIC(LIB, STREAM_FIFO, "Stream FIFO");
 			  "&(struct stream): %p, size: %lu, getp: %lu, endp: %lu", \
 			  (void *)(S), (unsigned long)(S)->size,	       \
 			  (unsigned long)(S)->getp, (unsigned long)(S)->endp); \
-		zlog_backtrace(LOG_WARNING);				       \
+		/* zlog_backtrace(LOG_WARNING); */			       \
 	} while (0)
 
 #define STREAM_VERIFY_SANE(S)                                                  \
