@@ -148,6 +148,7 @@ __wcsconv(wchar_t *wcsarg, int prec)
  */
 ssize_t
 vbprintfrr(struct fbuf *cb_in, const char *fmt0, va_list ap)
+	  __attribute__((no_sanitize("unsigned-integer-overflow")))
 {
 	const char *fmt;	/* format string */
 	int ch;			/* character from fmt */
@@ -483,7 +484,7 @@ reswitch:	switch (ch) {
 				}
 			} else {
 				if ((long)ulval < 0) {
-					ulval = (u_long)-ulval;
+					ulval = (~ulval) + 1;
 					sign = '-';
 				}
 			}
