@@ -559,6 +559,8 @@ AC_ARG_ENABLE([grpc],
   AS_HELP_STRING([--enable-grpc], [enable the gRPC northbound plugin]))
 AC_ARG_ENABLE([zeromq],
   AS_HELP_STRING([--enable-zeromq], [enable ZeroMQ handler (libfrrzmq)]))
+AC_ARG_ENABLE([lttng],
+  AS_HELP_STRING([--enable-lttng], [enable LTTng tracing]))
 AC_ARG_WITH([libpam],
   AS_HELP_STRING([--with-libpam], [use libpam for PAM support in vtysh]))
 AC_ARG_ENABLE([ospfapi],
@@ -1787,6 +1789,20 @@ fi
 dnl ------
 dnl ZeroMQ
 dnl ------
+if test "$enable_lttng" != "no"; then
+  PKG_CHECK_MODULES([UST], [lttng-ust >= 2.12.0], [
+    AC_DEFINE([HAVE_LTTNG], [1], [Enable LTTng support])
+    LTTNG=true
+  ], [
+    if test "$enable_lttng" = "yes"; then
+      AC_MSG_ERROR([configuration specifies --enable-lttng but lttng-ust was not found])
+    fi
+  ])
+fi
+
+dnl -----
+dnl LTTng
+dnl -----
 if test "$enable_zeromq" != "no"; then
   PKG_CHECK_MODULES([ZEROMQ], [libzmq >= 4.0.0], [
     AC_DEFINE([HAVE_ZEROMQ], [1], [Enable ZeroMQ support])
