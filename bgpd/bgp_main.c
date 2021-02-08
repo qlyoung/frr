@@ -389,23 +389,17 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size);
 
 static bool FuzzingInit(void) {
 	int bgp_port = BGP_PORT_DEFAULT;
-	char *bgp_address = NULL;
 	int instance = 0;
 	int buffer_size = BGP_SOCKET_SNDBUF_SIZE;
-	char *address;
-	struct listnode *node;
-
-	addresses->cmp = (int (*)(void *, void *))strcmp;
 
 	const char *name[] = { "bgpd" };
 
 	frr_preinit(&bgpd_di, 1, (char **) name);
 
 	/* Initialize basic BGP datastructures */
-	bgp_master_init(frr_init_fast(), buffer_size);
+	bgp_master_init(frr_init_fast(), buffer_size, list_new());
 	bm->port = bgp_port;
 	bgp_option_set(BGP_OPT_NO_LISTEN);
-	bm->address = bgp_address;
 
 	bgp_option_set(BGP_OPT_NO_FIB);
 	bgp_option_set(BGP_OPT_NO_ZEBRA);
@@ -550,12 +544,12 @@ int main(int argc, char **argv)
 	int tmp_port;
 
 	int bgp_port = BGP_PORT_DEFAULT;
-	char *bgp_address = NULL;
 	int no_fib_flag = 0;
 	int no_zebra_flag = 0;
 	int skip_runas = 0;
 	int instance = 0;
 	int buffer_size = BGP_SOCKET_SNDBUF_SIZE;
+	struct list *addresses = list_new();
 
 	frr_preinit(&bgpd_di, argc, argv);
 
@@ -678,6 +672,8 @@ int main(int argc, char **argv)
 		snprintf(bgpd_di.startinfo, sizeof(bgpd_di.startinfo),
 			 ", bgp@<all>:%d", bm->port);
 	} else {
+		struct listnode *node;
+		char *address;
 		for (ALL_LIST_ELEMENTS_RO(bm->addresses, node, address))
 			snprintf(bgpd_di.startinfo + strlen(bgpd_di.startinfo),
 				 sizeof(bgpd_di.startinfo)
