@@ -120,7 +120,7 @@ void xref_gcc_workaround(const struct xref *xref)
 	xref_add_one(xref);
 }
 
-void xref_block_add(struct xref_block *block)
+void xref_block_add(struct xref_block *block) __attribute__((no_sanitize("address")))
 {
 	const struct xref * const *xrefp;
 
