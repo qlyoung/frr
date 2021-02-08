@@ -44,6 +44,11 @@
 #include "vty.h"
 #include "command.h"
 
+#ifdef FUZZING
+#undef HAVE_MALLINFO
+#undef HAVE_MALLINFO2
+#endif /* FUZZING */
+
 #if defined(HAVE_MALLINFO2) || defined(HAVE_MALLINFO)
 static int show_memory_mallinfo(struct vty *vty)
 {
