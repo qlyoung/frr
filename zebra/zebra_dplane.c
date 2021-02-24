@@ -34,6 +34,7 @@
 #include "zebra/zebra_vxlan_private.h"
 #include "zebra/zebra_mpls.h"
 #include "zebra/rt.h"
+#include "zebra/zebra_trace.h"
 #include "zebra/debug.h"
 #include "zebra/zebra_pbr.h"
 #include "printfrr.h"
@@ -2599,6 +2600,13 @@ done:
 enum zebra_dplane_result dplane_route_add(struct route_node *rn,
 					  struct route_entry *re)
 {
+	if (frrtrace_enabled(frr_zebra, route_install_queued)) {
+		char __ftrnbuf[PREFIX_STRLEN];
+		prefix2str(&rn->p, __ftrnbuf, sizeof(__ftrnbuf));
+		frrtrace(1, frr_zebra, route_install_queued, __ftrnbuf,
+			 rn->p->prefixlen);
+	}
+
 	enum zebra_dplane_result ret = ZEBRA_DPLANE_REQUEST_FAILURE;
 
 	if (rn == NULL || re == NULL)
