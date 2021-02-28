@@ -40,7 +40,7 @@
 
 TRACEPOINT_EVENT_CLASS(
 	frr_bgp,
-	packet_process,
+	msg_process,
 	TP_ARGS(struct peer *, peer, bgp_size_t, size),
 	TP_FIELDS(
 		ctf_string(peer, PEER_HOSTNAME(peer))
@@ -49,16 +49,16 @@ TRACEPOINT_EVENT_CLASS(
 
 #define PKT_PROCESS_TRACEPOINT_INSTANCE(name)                                  \
 	TRACEPOINT_EVENT_INSTANCE(                                             \
-		frr_bgp, packet_process, name,                                 \
+		frr_bgp, msg_process, name,                                    \
 		TP_ARGS(struct peer *, peer, bgp_size_t, size))                \
 	TRACEPOINT_LOGLEVEL(frr_bgp, name, TRACE_INFO)
 
-PKT_PROCESS_TRACEPOINT_INSTANCE(open_process)
-PKT_PROCESS_TRACEPOINT_INSTANCE(keepalive_process)
-PKT_PROCESS_TRACEPOINT_INSTANCE(update_process)
-PKT_PROCESS_TRACEPOINT_INSTANCE(notification_process)
-PKT_PROCESS_TRACEPOINT_INSTANCE(capability_process)
-PKT_PROCESS_TRACEPOINT_INSTANCE(refresh_process)
+PKT_PROCESS_TRACEPOINT_INSTANCE(msg_open_process)
+PKT_PROCESS_TRACEPOINT_INSTANCE(msg_keepalive_process)
+PKT_PROCESS_TRACEPOINT_INSTANCE(msg_update_process)
+PKT_PROCESS_TRACEPOINT_INSTANCE(msg_notification_process)
+PKT_PROCESS_TRACEPOINT_INSTANCE(msg_capability_process)
+PKT_PROCESS_TRACEPOINT_INSTANCE(msg_refresh_process)
 
 TRACEPOINT_EVENT(
 	frr_bgp,
