@@ -18,6 +18,7 @@ vrrpd_libvrrp_a_SOURCES = \
 	vrrpd/vrrp_ndisc.c \
 	vrrpd/vrrp_northbound.c \
 	vrrpd/vrrp_packet.c \
+	vrrpd/vrrp_trace.c \
 	vrrpd/vrrp_vty.c \
 	vrrpd/vrrp_zebra.c \
 	# end
@@ -28,6 +29,7 @@ noinst_HEADERS += \
 	vrrpd/vrrp_debug.h \
 	vrrpd/vrrp_ndisc.h \
 	vrrpd/vrrp_packet.h \
+	vrrpd/vrrp_trace.h \
 	vrrpd/vrrp_vty.h \
 	vrrpd/vrrp_zebra.h \
 	# end

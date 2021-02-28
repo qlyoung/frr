@@ -656,6 +656,8 @@ struct vrrp_vrouter *vrrp_vrouter_create(struct interface *ifp, uint8_t vrid,
 
 	hash_get(vrrp_vrouters_hash, vr, hash_alloc_intern);
 
+	frrtrace(frr_vrrp, vrrp_vrouter_create, vr);
+
 	return vr;
 }
 
